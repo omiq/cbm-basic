@@ -128,10 +128,16 @@ Run the interpreter and pass the path to your BASIC program:
 basic.exe hello.bas      # Windows
 ```
 
+You can also enable a **PETSCII/ANSI mode** that understands common C64 control codes (clear screen, cursor moves, basic colors) inside strings and `CHR$` output:
+
+```bash
+./basic -petscii hello.bas
+```
+
 If you do not pass a file name, the interpreter will print usage information:
 
 ```text
-Usage: basic <program.bas>
+Usage: basic [-petscii] <program.bas>
 ```
 
 ### Included example programs

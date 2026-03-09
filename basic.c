@@ -142,6 +142,7 @@ static int current_line = 0;
 static char *statement_pos = NULL;
 static int halted = 0;
 static int print_col = 0;
+static int petscii_mode = 0;
 
 static void runtime_error(const char *msg);
 static void load_program(const char *path);
@@ -590,14 +591,70 @@ static void print_value(struct value *v)
         char *s;
         s = v->str;
         while (*s) {
-            fputc(*s, stdout);
-            if (*s == '\n') {
-                print_col = 0;
-            } else {
-                print_col++;
-                if (print_col >= PRINT_WIDTH) {
-                    fputc('\n', stdout);
+            unsigned char c = (unsigned char)*s;
+            if (petscii_mode) {
+                /* Minimal PETSCII -> ANSI translation */
+                switch (c) {
+                case 147: /* CLR: clear screen, home cursor */
+                    fputs("\033[2J\033[H", stdout);
                     print_col = 0;
+                    break;
+                case 17: /* cursor down */
+                    fputs("\033[B", stdout);
+                    break;
+                case 145: /* cursor up */
+                    fputs("\033[A", stdout);
+                    break;
+                case 29: /* cursor right */
+                    fputs("\033[C", stdout);
+                    print_col++;
+                    break;
+                case 157: /* cursor left */
+                    fputs("\033[D", stdout);
+                    if (print_col > 0) {
+                        print_col--;
+                    }
+                    break;
+                /* Basic color controls mapped to ANSI */
+                case 5:   /* white */
+                    fputs("\033[37m", stdout);
+                    break;
+                case 28:  /* red */
+                    fputs("\033[31m", stdout);
+                    break;
+                case 30:  /* green */
+                    fputs("\033[32m", stdout);
+                    break;
+                case 31:  /* blue */
+                    fputs("\033[34m", stdout);
+                    break;
+                case 144: /* black */
+                    fputs("\033[30m", stdout);
+                    break;
+                default:
+                    if (c == '\n') {
+                        fputc('\n', stdout);
+                        print_col = 0;
+                    } else {
+                        fputc(c, stdout);
+                        print_col++;
+                        if (print_col >= PRINT_WIDTH) {
+                            fputc('\n', stdout);
+                            print_col = 0;
+                        }
+                    }
+                    break;
+                }
+            } else {
+                fputc(c, stdout);
+                if (c == '\n') {
+                    print_col = 0;
+                } else {
+                    print_col++;
+                    if (print_col >= PRINT_WIDTH) {
+                        fputc('\n', stdout);
+                        print_col = 0;
+                    }
                 }
             }
             s++;
@@ -1979,11 +2036,33 @@ static void run_program(void)
 
 int main(int argc, char **argv)
 {
+    const char *prog_path = NULL;
+    int i;
+
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <program.bas>\n", argv[0]);
+        fprintf(stderr, "Usage: %s [-petscii] <program.bas>\n", argv[0]);
         return 1;
     }
-    load_program(argv[1]);
+
+    for (i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-petscii") == 0 || strcmp(argv[i], "--petscii") == 0) {
+            petscii_mode = 1;
+        } else if (argv[i][0] == '-') {
+            fprintf(stderr, "Unknown option: %s\n", argv[i]);
+            fprintf(stderr, "Usage: %s [-petscii] <program.bas>\n", argv[0]);
+            return 1;
+        } else {
+            prog_path = argv[i];
+            break;
+        }
+    }
+
+    if (!prog_path) {
+        fprintf(stderr, "Usage: %s [-petscii] <program.bas>\n", argv[0]);
+        return 1;
+    }
+
+    load_program(prog_path);
     run_program();
     return 0;
 }

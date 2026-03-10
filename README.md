@@ -16,6 +16,10 @@ Expanded from original by [David Plummer](https://github.com/davepl/pdpsrc/tree/
 
 Line-numbered BASIC interpreter inspired by CBM BASIC v2 as found on classic Commodore machines.
 
+## DOWNLOADS
+
+[The latest binaries for Win/Mac/Linux are in ***Releases***](https://github.com/omiq/cbm-basic/releases/)
+
 ## Features
 
 - **Line-numbered programs** loaded from a text file (`10 ...`, `20 ...`, etc.).

@@ -1,0 +1,3 @@
+10 PRINT CHR$(28);"RED";CHR$(5)
+20 END
+

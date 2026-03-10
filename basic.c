@@ -304,10 +304,10 @@ static void runtime_error(const char *msg)
 /* Strip trailing newline from a buffer if present. */
 static void trim_newline(char *s)
 {
-    char *p;
-    p = strchr(s, '\n');
-    if (p) {
-        *p = '\0';
+    size_t len;
+    len = strlen(s);
+    while (len > 0 && (s[len - 1] == '\n' || s[len - 1] == '\r')) {
+        s[--len] = '\0';
     }
 }
 
@@ -814,6 +814,22 @@ static void print_value(struct value *v)
         s = v->str;
         while (*s) {
             unsigned char c = (unsigned char)*s;
+            /* Treat ANSI ESC sequences as zero-width for column tracking. */
+            if (petscii_mode && c == 0x1b) {
+                /* Output ESC and the rest of the sequence, but don't change print_col. */
+                fputc(c, stdout);
+                s++;
+                while (*s) {
+                    unsigned char d = (unsigned char)*s;
+                    fputc(d, stdout);
+                    s++;
+                    /* Heuristic: ANSI CSI sequences end on a letter @..~. */
+                    if (d >= '@' && d <= '~') {
+                        break;
+                    }
+                }
+                continue;
+            }
             fputc(c, stdout);
             if (c == '\n') {
                 print_col = 0;
@@ -1934,41 +1950,82 @@ static void statement_rem(char **p)
     *p += strlen(*p);
 }
 
+/* PRINT / ? statement.
+ * Semantics are CBM-like:
+ * - Expressions separated by ';' print back-to-back with no extra spacing.
+ * - Expressions separated by ',' advance to the next print "zone".
+ * - If the last separator in the statement is ';' or ',', no newline is emitted.
+ * - A bare PRINT (no expressions) always emits a newline.
+ */
 static void statement_print(char **p)
 {
-    int newline;
+    int any_output;
+    int ended_with_sep;
     struct value v;
-    newline = 1;
+
+    any_output = 0;
+    ended_with_sep = 0;
+
     for (;;) {
         skip_spaces(p);
         if (**p == '\0' || **p == ':') {
             break;
         }
+
+        /* Leading separators (e.g., PRINT , , "X") */
+        if (**p == ';') {
+            ended_with_sep = 1;
+            (*p)++;
+            continue;
+        } else if (**p == ',') {
+            int zone;
+            int nextcol;
+            ended_with_sep = 1;
+            zone = 10;
+            nextcol = ((print_col / zone) + 1) * zone;
+            if (nextcol < print_col) {
+                nextcol = print_col;
+            }
+            print_spaces(nextcol - print_col);
+            (*p)++;
+            continue;
+        }
+
         v = eval_expr(p);
         print_value(&v);
+        any_output = 1;
+        ended_with_sep = 0;
+
         skip_spaces(p);
         if (**p == ';') {
-            newline = 0;
+            ended_with_sep = 1;
             (*p)++;
         } else if (**p == ',') {
-            newline = 0;
-            {
-                int zone;
-                int nextcol;
-                zone = 10;
-                nextcol = ((print_col / zone) + 1) * zone;
-                if (nextcol < print_col) {
-                    nextcol = print_col;
-                }
-                print_spaces(nextcol - print_col);
+            int zone;
+            int nextcol;
+            ended_with_sep = 1;
+            zone = 10;
+            nextcol = ((print_col / zone) + 1) * zone;
+            if (nextcol < print_col) {
+                nextcol = print_col;
             }
+            print_spaces(nextcol - print_col);
             (*p)++;
         } else {
-            newline = 1;
             break;
         }
     }
-    if (newline) {
+
+    /* Bare PRINT: always newline. */
+    if (!any_output) {
+        fputc('\n', stdout);
+        print_col = 0;
+        fflush(stdout);
+        return;
+    }
+
+    /* Trailing ';' or ',' suppresses newline. */
+    if (!ended_with_sep) {
         fputc('\n', stdout);
         print_col = 0;
     }

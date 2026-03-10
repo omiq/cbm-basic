@@ -117,6 +117,8 @@ In `-petscii` mode, `CHR$` maps a few PETSCII control bytes to ANSI escape seque
   - **`CHR$(145)`**: cursor up (`ESC[A]`).
   - **`CHR$(29)`**: cursor right (`ESC[C]`).
   - **`CHR$(157)`**: cursor left (`ESC[D]`).
+  - **`CHR$(18)`**: reverse video on (`ESC[7m]`).
+  - **`CHR$(146)`**: reverse video off (`ESC[27m]`).
 - **Basic text colors** (ANSI approximations of C64 colors)
   - **`CHR$(144)`**: black (`ESC[30m]`).
   - **`CHR$(5)`**: white (`ESC[37m]`).

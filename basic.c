@@ -1202,6 +1202,10 @@ static struct value eval_function(const char *name, char **p)
                     return make_str("\033[C");
                 case 157: /* cursor left */
                     return make_str("\033[D");
+                case 18:  /* reverse on */
+                    return make_str("\033[7m");
+                case 146: /* reverse off */
+                    return make_str("\033[27m");
                 /* Base colors */
                 case 144: /* black */
                     return make_str("\033[30m");

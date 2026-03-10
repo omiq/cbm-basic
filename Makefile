@@ -12,31 +12,22 @@ CC      ?= cc
 CFLAGS  ?= -Wall -std=c99 -O2
 LDFLAGS ?= -lm
 
-all: $(TARGET)
+# Basic cross-platform tweaks for Windows vs POSIX
+ifeq ($(OS),Windows_NT)
+  EXE := .exe
+  RM  := del /F /Q
+else
+  EXE :=
+  RM  := rm -f
+endif
 
-$(TARGET): $(SRCS)
-	@set -e; \
-	M=`uname -m 2>/dev/null || echo unknown`; \
-	U=`uname -s 2>/dev/null || echo unknown`; \
-	case "$$U" in \
-	*MINGW*|*MSYS*|*CYGWIN*) \
-		PLATFORM="Windows (MinGW/Cygwin)"; \
-		CC="$(CC)"; CFLAGS="$(CFLAGS)"; LDFLAGS="";; \
-	Darwin) \
-		PLATFORM="macOS"; \
-		CC="$(CC)"; CFLAGS="$(CFLAGS)"; LDFLAGS="$(LDFLAGS)";; \
-	Linux) \
-		PLATFORM="Linux"; \
-		CC="$(CC)"; CFLAGS="$(CFLAGS)"; LDFLAGS="$(LDFLAGS)";; \
-	*) \
-		PLATFORM="UNIX"; \
-		CC="$(CC)"; CFLAGS="$(CFLAGS)"; LDFLAGS="$(LDFLAGS)";; \
-	esac; \
-	echo "Building for $$PLATFORM ($$M $$U)"; \
-	$$CC $$CFLAGS -o $@ $(SRCS) $$LDFLAGS
+all: $(TARGET)$(EXE)
+
+$(TARGET)$(EXE): $(SRCS)
+	$(CC) $(CFLAGS) -o $@ $(SRCS) $(LDFLAGS)
 
 clean:
-	rm -f $(TARGET)
+	$(RM) $(TARGET)$(EXE)
 
 .PHONY: all clean
 

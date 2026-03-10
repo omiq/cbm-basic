@@ -59,7 +59,6 @@ Run this once after unpacking, and macOS will stop treating the binary as “fro
   - **`FOR` / `NEXT`**: numeric loops, including `STEP` with positive or negative increments.
   - **`DIM`**: declare 1‑D numeric or string arrays.
   - **`REM`** and **`'`**: comments to end of line.
-  - **`SLEEP`**: pause execution for a number of 60 Hz “ticks” (e.g., `SLEEP 60` ≈ 1 second).
   - **`END` / `STOP`**: terminate program execution.
   - **`READ` / `DATA`**: load numeric and string literals from `DATA` statements into variables.
   - **`DEF FN`**: define simple user functions, e.g. `DEF FNY(X) = SIN(X)`.
@@ -74,7 +73,9 @@ Run this once after unpacking, and macOS will stop treating the binary as “fro
   - **Formatting**: `TAB` and `SPC` for horizontal positioning in `PRINT`.
 
 
+### Additional/Non-Standard BASIC Commands
 
+- **`SLEEP`**: pause execution for a number of 60 Hz “ticks” (e.g., `SLEEP 60` ≈ 1 second).
 
 
 ## 🎛️ Usage
@@ -170,7 +171,7 @@ Usage: basic [-petscii] [-palette ansi|c64] <program.bas>
 ---
 
 
-## Building from Source
+## 🛠️ Building from Source
 
 You can either use the provided `Makefile` (recommended) or compile manually.
 

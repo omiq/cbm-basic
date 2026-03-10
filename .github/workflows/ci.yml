@@ -1,0 +1,90 @@
+name: Build cbm-basic on all platforms
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ "v*" ]
+  pull_request:
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: basic-linux
+            archive: basic-linux.tar.gz
+            outdir: linux
+            bin: basic
+          - os: macos-latest
+            artifact: basic-macos
+            archive: basic-macos.tar.gz
+            outdir: mac
+            bin: basic
+          - os: windows-latest
+            artifact: basic-windows
+            archive: basic-windows.zip
+            outdir: windows
+            bin: basic.exe
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          make
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install -y make
+          make
+
+      - name: Package artifact (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p out/${{ matrix.outdir }}
+          cp ${{ matrix.bin }} out/${{ matrix.outdir }}/basic
+          cd out
+          tar czf ${{ matrix.archive }} ${{ matrix.outdir }}
+
+      - name: Package artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p out/${{ matrix.outdir }}
+          cp ${{ matrix.bin }} out/${{ matrix.outdir }}/basic.exe
+          cd out
+          powershell -Command "Compress-Archive -Path '${{ matrix.outdir }}' -DestinationPath '${{ matrix.archive }}'"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: out/${{ matrix.archive }}
+
+  release:
+    name: Release tagged build
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/**/* 
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

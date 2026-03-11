@@ -85,6 +85,30 @@ Run this once after unpacking, and macOS will stop treating the binary as “fro
 
 - **`SLEEP`**: pause execution for a number of 60 Hz “ticks” (e.g., `SLEEP 60` ≈ 1 second).
 
+### Tokenised PETSCII shortcuts inside strings
+
+- **Inline `{TOKENS}`**:
+  - Within double-quoted strings, the interpreter recognises `{...}` patterns and expands them to `CHR$()` calls **at load time**.
+  - This lets you write readable code such as:
+
+```basic
+PRINT "HELLO {RED}WORLD{WHITE}"
+PRINT "{CLR}READY."
+PRINT "MOVE {DOWN}{DOWN}{RIGHT} HERE"
+```
+
+- **What it does**:
+  - Each `{TOKEN}` inside a string is replaced as if you had written `";CHR$(N);"` at that point in the source, so all existing PETSCII/ANSI mappings for `CHR$` apply unchanged.
+  - Tokens can be:
+    - **Numeric**: e.g. `{147}` → `CHR$(147)`.
+    - **Named** PETSCII codes from the built-in table, including:
+      - Colors: `WHITE`, `RED`, `CYAN`, `PURPLE`, `GREEN`, `BLUE`, `YELLOW`, `ORANGE`, `BROWN`, `PINK`, `GRAY1`/`GREY1`, `GRAY2`/`GREY2`, `GRAY3`/`GREY3`, `LIGHTGREEN`/`LIGHT GREEN`, `LIGHTBLUE`/`LIGHT BLUE`, `BLACK`.
+      - Screen/control keys: `HOME`, `DOWN`, `UP`, `LEFT`, `RIGHT`, `DEL`/`DELETE`, `INS`/`INSERT`, `CLR`/`CLEAR`.
+      - Reverse video: `RVS`, `REVERSE ON`, `RVS OFF`, `REVERSE OFF`.
+- **Behaviour notes**:
+  - Token expansion is **purely a source transform**; once loaded, the program runs exactly as if you had typed the equivalent `CHR$()` expressions yourself.
+  - Tokens are only recognised **inside quoted strings**; everything else in your BASIC code is left untouched.
+
 ### Screen coordinates and cursor positioning
 
 - **Coordinate system**:

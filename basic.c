@@ -101,7 +101,7 @@ static void init_console_ansi(void)
 #define MAX_FOR 32
 #define MAX_STR_LEN 256
 #define DEFAULT_ARRAY_SIZE 11
-#define PRINT_WIDTH 80
+#define PRINT_WIDTH 40
 #ifndef TICKS_PER_SEC_FALLBACK
 #ifdef HZ
 #define TICKS_PER_SEC_FALLBACK HZ
@@ -814,19 +814,62 @@ static void print_value(struct value *v)
         s = v->str;
         while (*s) {
             unsigned char c = (unsigned char)*s;
-            /* Treat ANSI ESC sequences as zero-width for column tracking. */
+            /* Handle ANSI escape sequences specially so column tracking matches
+             * what the terminal actually does. Most sequences are treated as
+             * zero-width; cursor-right (C) / cursor-left (D) adjust print_col.
+             */
             if (petscii_mode && c == 0x1b) {
-                /* Output ESC and the rest of the sequence, but don't change print_col. */
                 fputc(c, stdout);
                 s++;
-                while (*s) {
-                    unsigned char d = (unsigned char)*s;
-                    fputc(d, stdout);
+                if (!*s) {
+                    break;
+                }
+                unsigned char d = (unsigned char)*s;
+                fputc(d, stdout);
+                if (d == '[') {
+                    int n = 0;
+                    int have_num = 0;
                     s++;
-                    /* Heuristic: ANSI CSI sequences end on a letter @..~. */
-                    if (d >= '@' && d <= '~') {
+                    while (*s) {
+                        d = (unsigned char)*s;
+                        fputc(d, stdout);
+                        if (d >= '0' && d <= '9') {
+                            n = n * 10 + (d - '0');
+                            have_num = 1;
+                            s++;
+                            continue;
+                        }
+                        if (d == ';' || d == '?' || d == ' ') {
+                            s++;
+                            continue;
+                        }
+                        /* Final byte of CSI sequence. */
+                        if (!have_num) {
+                            n = 1;
+                        }
+                        if (d == 'C') {
+                            /* Cursor right */
+                            print_col += n;
+                            if (print_col >= PRINT_WIDTH) {
+                                fputc('\n', stdout);
+                                print_col = 0;
+                            }
+                        } else if (d == 'D') {
+                            /* Cursor left */
+                            print_col -= n;
+                            if (print_col < 0) {
+                                print_col = 0;
+                            }
+                        } else if (d == 'H' || d == 'f') {
+                            /* Cursor home/position: we don't track row, just reset column. */
+                            print_col = 0;
+                        }
+                        s++;
                         break;
                     }
+                } else {
+                    /* Non-CSI escape; just emit next byte and treat as zero-width. */
+                    s++;
                 }
                 continue;
             }

@@ -520,14 +520,18 @@ struct line {
     char *text;
 };
 
+#define MAX_DIMS 3
+
 struct var {
     char name1;
     char name2;
     int is_string;
     int is_array;
-    int size;
+    int dims;                      /* 0 for scalar, >=1 for arrays */
+    int dim_sizes[MAX_DIMS];       /* per-dimension sizes */
+    int size;                      /* total number of elements (product of dim_sizes) */
     struct value scalar;
-    struct value *array;
+    struct value *array;           /* flat buffer of length size */
 };
 
 struct gosub_frame {
@@ -608,7 +612,7 @@ static void execute_statement(char **p);
 static struct value *get_var_reference(char **p, int *is_array_out, int *is_string_out);
 static struct value make_num(double v);
 static struct value make_str(const char *s);
-static struct var *find_or_create_var(char name1, char name2, int is_string, int want_array, int array_size);
+static struct var *find_or_create_var(char name1, char name2, int is_string, int want_array, int dims, const int *dim_sizes, int total_size);
 static struct value eval_function(const char *name, char **p);
 static int user_func_lookup(const char *name);
 static void collect_data_from_program(void);
@@ -1939,7 +1943,7 @@ static void uppercase_name(const char *src, char *n1, char *n2, int *is_string)
     }
 }
 
-static struct var *find_or_create_var(char name1, char name2, int is_string, int want_array, int array_size)
+static struct var *find_or_create_var(char name1, char name2, int is_string, int want_array, int dims, const int *dim_sizes, int total_size)
 {
     int i, idx;
     struct var *v;
@@ -1948,21 +1952,18 @@ static struct var *find_or_create_var(char name1, char name2, int is_string, int
             v = &vars[i];
             if (want_array && !v->is_array) {
                 v->is_array = 1;
-                v->size = array_size;
-                v->array = (struct value *)calloc(array_size, sizeof(struct value));
+                v->dims = dims;
+                if (dims > 0 && dim_sizes) {
+                    int d;
+                    for (d = 0; d < dims && d < MAX_DIMS; d++) {
+                        v->dim_sizes[d] = dim_sizes[d];
+                    }
+                }
+                v->size = total_size;
+                v->array = (struct value *)calloc(total_size, sizeof(struct value));
                 if (!v->array) {
                     runtime_error("Out of memory");
                     return v;
-                }
-            } else if (want_array && array_size > v->size) {
-                /* Resize array when needed */
-                struct value *new_arr;
-                new_arr = (struct value *)realloc(v->array, array_size * sizeof(struct value));
-                if (new_arr) {
-                    v->array = new_arr;
-                    v->size = array_size;
-                } else {
-                    runtime_error("Out of memory");
                 }
             }
             return v;
@@ -1978,14 +1979,26 @@ static struct var *find_or_create_var(char name1, char name2, int is_string, int
     v->name2 = name2;
     v->is_string = is_string;
     v->is_array = want_array;
-    v->size = want_array ? array_size : 0;
+    v->dims = want_array ? dims : 0;
+    if (want_array && dims > 0 && dim_sizes) {
+        int d;
+        for (d = 0; d < dims && d < MAX_DIMS; d++) {
+            v->dim_sizes[d] = dim_sizes[d];
+        }
+    } else {
+        int d;
+        for (d = 0; d < MAX_DIMS; d++) {
+            v->dim_sizes[d] = 0;
+        }
+    }
+    v->size = want_array ? total_size : 0;
     v->array = NULL;
     v->scalar = make_num(0.0);
     if (is_string) {
         v->scalar = make_str("");
     }
     if (want_array) {
-        v->array = (struct value *)calloc(array_size, sizeof(struct value));
+        v->array = (struct value *)calloc(total_size, sizeof(struct value));
         if (!v->array) {
             runtime_error("Out of memory");
         }
@@ -2017,8 +2030,11 @@ static struct value *get_var_reference(char **p, int *is_array_out, int *is_stri
     struct var *v;
     struct value *valp;
     int is_array;
-    int array_size;
-    int array_index;
+    int dims;
+    int dim_sizes[MAX_DIMS];
+    int indices[MAX_DIMS];
+    int flat_index = 0;
+    int stride = 1;
     struct value idx_val;
 
     skip_spaces(p);
@@ -2033,51 +2049,84 @@ static struct value *get_var_reference(char **p, int *is_array_out, int *is_stri
     }
     skip_spaces(p);
     is_array = 0;
-    array_size = 0;
-    array_index = -1;
+    dims = 0;
     if (**p == '(') {
+        int d;
         is_array = 1;
         (*p)++;
-        idx_val = eval_expr(p);
-        ensure_num(&idx_val);
-        skip_spaces(p);
+        for (;;) {
+            if (dims >= MAX_DIMS) {
+                runtime_error("Too many subscripts");
+                return NULL;
+            }
+            idx_val = eval_expr(p);
+            ensure_num(&idx_val);
+            indices[dims] = (int)(idx_val.num + 0.00001);
+            if (indices[dims] < 0) {
+                runtime_error("Negative array index");
+                return NULL;
+            }
+            dims++;
+            skip_spaces(p);
+            if (**p == ',') {
+                (*p)++;
+                continue;
+            }
+            break;
+        }
         if (**p != ')') {
             runtime_error("Missing ')'");
             return NULL;
         }
         (*p)++;
-        array_index = (int)(idx_val.num + 0.00001);
-        if (array_index < 0) {
-            runtime_error("Negative array index");
-            return NULL;
-        }
-        array_size = array_index + 1;
-        if (array_size < DEFAULT_ARRAY_SIZE) {
-            array_size = DEFAULT_ARRAY_SIZE;
-        }
     }
     if (is_array_out) {
         *is_array_out = is_array;
     }
-    v = find_or_create_var(n1, n2, is_string, is_array, is_array ? array_size : 0);
+    v = find_or_create_var(n1, n2, is_string, is_array, 0, NULL, 0);
     if (!v) {
         return NULL;
     }
     if (!is_array) {
         valp = &v->scalar;
     } else {
-        if (array_index >= v->size) {
-            struct value *new_arr;
-            new_arr = (struct value *)realloc(v->array, (array_index + 1) * sizeof(struct value));
-            if (!new_arr) {
+        int d;
+        if (v->dims == 0) {
+            /* First array use: assume 1-D and adopt current index as size hint. */
+            v->dims = 1;
+            v->dim_sizes[0] = (indices[0] + 1 > DEFAULT_ARRAY_SIZE) ? (indices[0] + 1) : DEFAULT_ARRAY_SIZE;
+            v->size = v->dim_sizes[0];
+            v->array = (struct value *)calloc(v->size, sizeof(struct value));
+            if (!v->array) {
                 runtime_error("Out of memory");
                 return NULL;
             }
-            memset(new_arr + v->size, 0, (array_index + 1 - v->size) * sizeof(struct value));
-            v->array = new_arr;
-            v->size = array_index + 1;
         }
-        valp = &v->array[array_index];
+        if (dims == 0) {
+            runtime_error("Array subscript required");
+            return NULL;
+        }
+        if (dims > v->dims) {
+            runtime_error("Too many subscripts");
+            return NULL;
+        }
+        /* For now we assume dimensions were fixed by DIM; no auto-resize for multi-dim. */
+        flat_index = 0;
+        stride = 1;
+        for (d = v->dims - 1; d >= 0; d--) {
+            int idx = (d < dims) ? indices[d] : 0;
+            if (idx < 0 || idx >= v->dim_sizes[d]) {
+                runtime_error("Subscript out of range");
+                return NULL;
+            }
+            flat_index += idx * stride;
+            stride *= v->dim_sizes[d];
+        }
+        if (flat_index >= v->size) {
+            runtime_error("Subscript out of range");
+            return NULL;
+        }
+        valp = &v->array[flat_index];
     }
     if (is_string && valp->type != VAL_STR) {
         *valp = make_str("");
@@ -2179,7 +2228,7 @@ static struct value eval_factor(char **p)
                 strncpy(pname_buf, uf->param_name, sizeof(pname_buf) - 1);
                 pname_buf[sizeof(pname_buf) - 1] = '\0';
                 uppercase_name(pname_buf, &n1, &n2, &dummy_is_string);
-                param_var = find_or_create_var(n1, n2, uf->param_is_string, 0, 0);
+                param_var = find_or_create_var(n1, n2, uf->param_is_string, 0, 0, NULL, 0);
                 if (!param_var) {
                     return make_num(0.0);
                 }
@@ -2886,7 +2935,9 @@ static void statement_dim(char **p)
         char namebuf[8];
         char n1, n2;
         int is_string;
-        int size;
+        int dims = 0;
+        int dim_sizes[MAX_DIMS];
+        int total_size = 1;
         struct var *v;
         struct value sizev;
         skip_spaces(p);
@@ -2902,20 +2953,39 @@ static void statement_dim(char **p)
             return;
         }
         (*p)++;
-        sizev = eval_expr(p);
-        ensure_num(&sizev);
-        size = (int)sizev.num + 1;
-        if (size <= 0) {
-            runtime_error("Invalid array size");
-            return;
+        for (;;) {
+            if (dims >= MAX_DIMS) {
+                runtime_error("Too many dimensions");
+                return;
+            }
+            sizev = eval_expr(p);
+            ensure_num(&sizev);
+            dim_sizes[dims] = (int)sizev.num + 1;
+            if (dim_sizes[dims] <= 0) {
+                runtime_error("Invalid array size");
+                return;
+            }
+            dims++;
+            skip_spaces(p);
+            if (**p == ',') {
+                (*p)++;
+                continue;
+            }
+            break;
         }
-        skip_spaces(p);
         if (**p != ')') {
             runtime_error("Missing ')'");
             return;
         }
         (*p)++;
-        v = find_or_create_var(n1, n2, is_string, 1, size);
+        /* Compute total size as product of dimensions. */
+        {
+            int d;
+            for (d = 0; d < dims; d++) {
+                total_size *= dim_sizes[d];
+            }
+        }
+        v = find_or_create_var(n1, n2, is_string, 1, dims, dim_sizes, total_size);
         (void)v;
         skip_spaces(p);
         if (**p == ',') {

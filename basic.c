@@ -74,6 +74,11 @@ typedef struct {
     int code;
 } TokenMap;
 
+static int is_ident_char(int c)
+{
+    return isalpha((unsigned char)c) || isdigit((unsigned char)c) || c == '$';
+}
+
 static const TokenMap token_map[] = {
     {"WHITE", 5},
     {"RED", 28},
@@ -325,6 +330,128 @@ static char *transform_basic_line(const char *input)
         if (segment_start) {
             sb_append_str(&out, segment_start);
         }
+    }
+
+    return out.buf;
+}
+
+/* Normalize certain keywords in a BASIC source line to restore
+ * CBM-style whitespace that may have been stripped, e.g.:
+ *   IFB3<1THENIFE>10ORD(7)=0THEN GOTO 890
+ * becomes:
+ *   IF B3<1 THEN IF E>10 OR D(7)=0 THEN GOTO 890
+ * The transformation is applied only outside of quoted strings.
+ */
+static char *normalize_keywords_line(const char *input)
+{
+    StrBuf out;
+    int in_string = 0;
+    size_t i = 0;
+
+    sb_init(&out);
+
+    while (input[i] != '\0') {
+        char c = input[i];
+
+        if (c == '\"') {
+            in_string = !in_string;
+            sb_append_char(&out, c);
+            i++;
+            continue;
+        }
+
+        if (!in_string) {
+            char c1 = (char)toupper((unsigned char)c);
+            char c2 = (char)toupper((unsigned char)input[i + 1]);
+            char c3 = (char)toupper((unsigned char)input[i + 2]);
+            char c4 = (char)toupper((unsigned char)input[i + 3]);
+
+            /* IF followed immediately by identifier/digit without space */
+            if (c1 == 'I' && c2 == 'F') {
+                char next = input[i + 2];
+                if (next != '\0' && !isspace((unsigned char)next) && next != ':' ) {
+                    /* Insert space before IF if needed */
+                    if (out.len > 0) {
+                        char prev = out.buf[out.len - 1];
+                        if (!isspace((unsigned char)prev) && prev != ':' && prev != '(') {
+                            sb_append_char(&out, ' ');
+                        }
+                    }
+                    sb_append_str(&out, "IF");
+                    i += 2;
+                    /* Ensure space after IF */
+                    sb_append_char(&out, ' ');
+                    continue;
+                }
+            }
+
+            /* THEN */
+            if (c1 == 'T' && c2 == 'H' && c3 == 'E' && c4 == 'N') {
+                /* Insert space before THEN if needed */
+                if (out.len > 0) {
+                    char prev = out.buf[out.len - 1];
+                    if (!isspace((unsigned char)prev) && prev != ':' && prev != '(') {
+                        sb_append_char(&out, ' ');
+                    }
+                }
+                sb_append_str(&out, "THEN");
+                i += 4;
+                /* Skip any existing spaces after THEN */
+                while (isspace((unsigned char)input[i])) {
+                    i++;
+                }
+                /* Ensure one space after THEN if next char is non-separator */
+                if (input[i] != '\0' && input[i] != ':' && !isspace((unsigned char)input[i])) {
+                    sb_append_char(&out, ' ');
+                }
+                continue;
+            }
+
+            /* AND / OR infix operators without spaces.
+             * Only treat as operators when they are not embedded in identifiers
+             * (e.g., avoid splitting FOR into F OR, or ORD into OR D).
+             */
+            if (c1 == 'A' && c2 == 'N' && c3 == 'D') {
+                char prev_in = (i > 0) ? input[i - 1] : ' ';
+                char next_in = input[i + 3];
+                if (!is_ident_char(prev_in) && !is_ident_char(next_in)) {
+                    /* Surround AND with spaces */
+                    if (out.len > 0) {
+                        char prev = out.buf[out.len - 1];
+                        if (!isspace((unsigned char)prev) && prev != '(') {
+                            sb_append_char(&out, ' ');
+                        }
+                    }
+                    sb_append_str(&out, "AND");
+                    i += 3;
+                    if (input[i] != '\0' && !isspace((unsigned char)input[i]) && input[i] != ')') {
+                        sb_append_char(&out, ' ');
+                    }
+                    continue;
+                }
+            }
+            if (c1 == 'O' && c2 == 'R') {
+                char prev_in = (i > 0) ? input[i - 1] : ' ';
+                char next_in = input[i + 2];
+                if (!is_ident_char(prev_in) && !is_ident_char(next_in)) {
+                    if (out.len > 0) {
+                        char prev = out.buf[out.len - 1];
+                        if (!isspace((unsigned char)prev) && prev != '(') {
+                            sb_append_char(&out, ' ');
+                        }
+                    }
+                    sb_append_str(&out, "OR");
+                    i += 2;
+                    if (input[i] != '\0' && !isspace((unsigned char)input[i]) && input[i] != ')') {
+                        sb_append_char(&out, ' ');
+                    }
+                    continue;
+                }
+            }
+        }
+
+        sb_append_char(&out, c);
+        i++;
     }
 
     return out.buf;
@@ -663,7 +790,7 @@ static int starts_with_kw(char *p, const char *kw)
             return 0;
         }
     }
-    if (p[i] == '\0' || p[i] == ' ' || p[i] == '\t' || p[i] == ':' || p[i] == '(' || p[i] == '$') {
+    if (p[i] == '\0' || p[i] == ' ' || p[i] == '\t' || p[i] == ':' || p[i] == '(' || p[i] == '$' || p[i] == '\"') {
         return 1;
     }
     return 0;
@@ -1364,8 +1491,11 @@ static void statement_get(char **p)
     if (ch == EOF) {
         *vp = make_str("");
     } else if (ch == '\n' || ch == '\r') {
-        /* Treat pure newline as "no key" */
-        *vp = make_str("");
+        /* Map Enter/Return to PETSCII-style CHR$(13) so ASC(Y$)=13 works. */
+        char buf[2];
+        buf[0] = 13;
+        buf[1] = '\0';
+        *vp = make_str(buf);
     } else {
         char buf[2];
         buf[0] = (char)ch;
@@ -1868,8 +1998,10 @@ static int read_identifier(char **p, char *buf, int buf_size)
 {
     int i;
     i = 0;
-    while ((isalpha((unsigned char)(**p)) || isdigit((unsigned char)(**p)) || **p == '$') && i < buf_size - 1) {
-        buf[i++] = **p;
+    while (isalpha((unsigned char)(**p)) || isdigit((unsigned char)(**p)) || **p == '$') {
+        if (i < buf_size - 1) {
+            buf[i++] = **p;
+        }
         (*p)++;
     }
     buf[i] = '\0';
@@ -3055,7 +3187,11 @@ static void load_program(const char *path)
                 p++;
             }
             transformed = transform_basic_line(p);
-            add_or_replace_line(number, transformed);
+            {
+                char *normalized = normalize_keywords_line(transformed);
+                add_or_replace_line(number, normalized);
+                free(normalized);
+            }
             free(transformed);
         } else {
             /* Numberless mode: reject later lines that suddenly introduce
@@ -3073,7 +3209,9 @@ static void load_program(const char *path)
             auto_line_no += 10;
             {
                 char *transformed = transform_basic_line(p);
-                add_or_replace_line(number, transformed);
+                char *normalized = normalize_keywords_line(transformed);
+                add_or_replace_line(number, normalized);
+                free(normalized);
                 free(transformed);
             }
         }

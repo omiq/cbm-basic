@@ -16,7 +16,7 @@ Expanded from original by [David Plummer](https://github.com/davepl/pdpsrc/tree/
 
 Line-numbered BASIC interpreter inspired by CBM BASIC v2 as found on classic Commodore machines.
 
-Unlike emulators, this is a BASIC interpreter that, while a project in development, can already do real work.
+Unlike emulators, this is a BASIC interpreter that, while a project still very much in development, can already do real work.
 
 For example reading and writing files.
 

@@ -39,6 +39,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
+#include <time.h>
 #if defined(_WIN32)
 #include <windows.h>
 #include <conio.h>
@@ -1733,7 +1734,8 @@ static struct value eval_function(const char *name, char **p)
     case FN_RND:
         ensure_num(&arg);
         if (arg.num < 0) {
-            srand((unsigned int)(-arg.num));
+            /* Reseed: C64-style RND(negative) starts a new sequence. We use time so each run gets a different sequence (like RND(-TI) on C64). */
+            srand((unsigned int)time(NULL));
         }
         return make_num((double)rand() / (double)RAND_MAX);
     case FN_LEN:

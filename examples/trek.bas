@@ -8,7 +8,7 @@
 45 REM ** SUPPORT ELECTRON.GREG
 50 REM ** https://electrongreg.itch.io/
 55 REM **
-85 CLR: Z2$="" : ATAKFLAG=0 : SLSFLAG=0: N=RND(0)
+85 CLR: Z2$="" : ATAKFLAG=0 : SLSFLAG=0: N=RND(-1)
 86 ES$="E  " : KS$="K  " : BS$="B  " : SS$="*  " : EM$="   "
 90 REM ** COLOURS AT END OF LISTING **
 95 GOSUB 6500

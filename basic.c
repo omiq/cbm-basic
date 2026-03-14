@@ -1848,7 +1848,9 @@ static struct value eval_function(const char *name, char **p)
                     return make_str("\033[A");
                 case 29:  /* cursor right */
                     return make_str("\033[C");
-                case 157: /* cursor left */
+                case 20:  /* DEL: backspace — cursor left and erase character (like ^H) */
+                    return make_str("\033[D\033[P");
+                case 157: /* cursor left (no erase) */
                     return make_str("\033[D");
                 case 18:  /* reverse on */
                     return make_str("\033[7m");

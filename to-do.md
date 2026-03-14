@@ -26,6 +26,20 @@ Colour without pokes
   * Allow splitting larger programs into multiple source files / libraries while preserving line-numbered semantics
   * Consider search paths and guarding against recursive includes
 
+* Command-line arguments
+  * Eg. ./basic test.bas argument1 argument2
+  * Guess these would map to a string array by splitting the arguments by ' '?
+
+* Standard in/out handling
+  * Pipe into and out from ./basic ?
+  * Standard error?
+
+* Execute system / CLI commands
+  * Command ("OS"?) that executes CLI commands
+  * Is it possible to have results returned? Eg. `result$ = os("echo test")`
+  * What about large/long-running programs such as `cURL`?
+  
+
 ---
 
 **Completed (removed from list):**

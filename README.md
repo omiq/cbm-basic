@@ -75,7 +75,7 @@ Run this once after unpacking, and macOS will stop treating the binary as “fro
   - **`DIM`**: declare 1‑D or multi‑dimensional numeric or string arrays (e.g. `DIM A(10)`, `DIM B(2,3)`).
   - **`REM`** and **`'`**: comments to end of line.
   - **`END` / `STOP`**: terminate program execution.
-  - **`READ` / `DATA`**: load numeric and string literals from `DATA` statements into variables.
+  - **`READ` / `DATA`**: load numeric and string literals from `DATA` statements into variables. **`RESTORE`** resets the DATA pointer so the next `READ` uses the first value again (C64-style).
   - **`DEF FN`**: define simple user functions, e.g. `DEF FNY(X) = SIN(X)`.
   - **`POKE`**: accepted as a no‑op (for compatibility with old listings; it does not touch real memory).
   - **`CLR`**: resets all variables to 0/empty, clears GOSUB/FOR stacks and DATA pointer; DEF FN definitions are kept.

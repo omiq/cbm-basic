@@ -2940,6 +2940,13 @@ static void statement_on(char **p)
     /* If index is out of range, ON expression simply falls through. */
 }
 
+/* RESTORE: reset DATA pointer so the next READ gets the first DATA value (C64 BASIC V2). */
+static void statement_restore(char **p)
+{
+    (void)p;
+    data_index = 0;
+}
+
 /* CLR: reset all variables to 0/empty, clear GOSUB/FOR stacks, reset DATA pointer.
  * DEF FN definitions are left intact (CBM-style). */
 static void statement_clr(char **p)
@@ -3633,6 +3640,11 @@ static void execute_statement(char **p)
         if (starts_with_kw(*p, "READ")) {
             *p += 4;
             statement_read(p);
+            return;
+        }
+        if (starts_with_kw(*p, "RESTORE")) {
+            *p += 7;
+            statement_restore(p);
             return;
         }
     }

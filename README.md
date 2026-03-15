@@ -100,6 +100,11 @@ Run this once after unpacking, and macOS will stop treating the binary as “fro
       - `LEFT$(S$, n)` – first `n` characters.
       - `RIGHT$(S$, n)` – last `n` characters.
   - **Formatting**: `TAB` and `SPC` for horizontal positioning in `PRINT`.
+  - **Command-line arguments and shell** (for scripting):
+    - **`ARGC()`** — returns the number of arguments passed after the script path (e.g. `./basic script.bas a b` → `ARGC()` = 2). Use `ARGC()` with parentheses.
+    - **`ARG$(n)`** — returns the *n*th argument as a string. `ARG$(0)` is the script path; `ARG$(1)` … `ARG$(ARGC())` are the arguments. Out-of-range returns `""`.
+    - **`SYSTEM(cmd$)`** — runs a shell command (e.g. `SYSTEM("ls -l")`), waits for it to finish, and returns its exit status (0 = success).
+    - **`EXEC$(cmd$)`** — runs a shell command and returns its standard output as a string (up to 255 characters; trailing newline trimmed). Use for scripting (e.g. `U$ = EXEC$("whoami")`).
 
 
 ### Additional/Non-Standard BASIC Commands
@@ -223,6 +228,25 @@ If you do not pass a file name, the interpreter will print usage information:
 Usage: basic [-petscii] [-petscii-plain] [-palette ansi|c64] <program.bas>
 ```
 
+### Shell scripting: standard I/O and arguments
+
+You can use the interpreter for shell-script style tasks:
+
+- **Standard input/output**  
+  **`INPUT`** reads from standard input (one line or token at a time). **`PRINT`** writes to standard output. So you can pipe data in and out:
+  - `echo 42 | ./basic program.bas`
+  - `./basic program.bas > out.txt`
+  Errors and usage go to **stderr**; only program output goes to stdout when you redirect.
+
+- **Command-line arguments**  
+  Anything after the script path is available to the program:
+  - `./basic script.bas first second`
+  - In the script: `ARG$(0)` = script path, `ARG$(1)` = `"first"`, `ARG$(2)` = `"second"`, `ARGC()` = 2.
+
+- **Running shell commands**  
+  **`SYSTEM("command")`** runs the command and returns its exit code. **`EXEC$("command")`** runs the command and returns its stdout as a string (e.g. `PRINT EXEC$("date")`).  
+  Example: `examples/scripting.bas` demonstrates `ARGC()`, `ARG$()`, `SYSTEM()`, and `EXEC$()`.
+
 ### Source normalization (compact CBM style)
 
 Program text is normalized at load time so **compact CBM BASIC** without spaces around keywords is accepted. For example: `IFX<0THEN`, `FORI=1TO9`, `GOTO410`, `GOSUB5400`, and similar forms are rewritten with spaces so the parser recognises `IF`/`THEN`, `FOR`/`TO`/`NEXT`, `GOTO`, and `GOSUB`. This helps run listings that were saved with minimal whitespace.
@@ -249,6 +273,7 @@ The **`examples`** folder (included in release archives) contains:
     `./basic -petscii-plain examples/colaburger_viewer.bas`  
   - With **`-petscii`** you get ANSI colors and cursor codes; with **`-petscii-plain`** you get
     strict character alignment and no escape sequences, ideal for art and fixed-width paste.
+- **`examples/scripting.bas`**: shell-scripting style — command-line arguments (`ARGC()`, `ARG$(0)` … `ARG$(n)`), running commands (`SYSTEM("date")`, `EXEC$("whoami")`). Run: `./basic examples/scripting.bas [name]`.
 - **`guess.bas`**, **`adventure.bas`**, **`printx.bas`**, and others for various features.
 
 ### Notes on the BASIC dialect

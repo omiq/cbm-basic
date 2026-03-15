@@ -736,8 +736,48 @@ enum {
 
 static int palette_mode = PALETTE_ANSI;
 
+/* Command-line arguments for the running script (after options and program path). */
+static const char *script_path = NULL;   /* path to the .bas file */
+static int script_argc = 0;              /* number of arguments after script path */
+static char **script_argv = NULL;        /* argv entries after script path */
+
+/* Run a shell command; returns exit status (0 = success, non-zero = failure). */
+static int do_system(const char *cmd)
+{
+#if defined(_WIN32)
+    return system(cmd);  /* MSVC: runs via cmd.exe */
+#else
+    return system(cmd);
+#endif
+}
+
+/* Run a shell command and return its stdout (up to MAX_STR_LEN-1 chars). */
+static void do_exec(const char *cmd, char *out, size_t out_size)
+{
+    FILE *fp;
+    size_t n;
+    if (out_size == 0) return;
+    out[0] = '\0';
+#if defined(_WIN32)
+    fp = _popen(cmd, "rt");
+#else
+    fp = popen(cmd, "r");
+#endif
+    if (!fp) return;
+    n = fread(out, 1, out_size - 1, fp);
+    out[n] = '\0';
+    /* Trim trailing newline if present */
+    while (n > 0 && (out[n-1] == '\n' || out[n-1] == '\r')) { out[--n] = '\0'; }
+#if defined(_WIN32)
+    _pclose(fp);
+#else
+    pclose(fp);
+#endif
+}
+
 static void runtime_error(const char *msg);
 static void load_program(const char *path);
+static void run_program(const char *script_path_arg, int nargs, char **args);
 static int find_line_index(int number);
 static void build_label_table(void);
 static int find_label_line(const char *name);
@@ -797,7 +837,11 @@ enum func_code {
     FN_LEFT = 19,
     FN_RIGHT = 20,
     FN_UCASE = 21,
-    FN_LCASE = 22
+    FN_LCASE = 22,
+    FN_SYSTEM = 23,
+    FN_EXEC = 24,
+    FN_ARGC = 25,
+    FN_ARG = 26
 };
 
 /* Report an error and halt further execution.
@@ -1462,6 +1506,7 @@ static int function_lookup(const char *name, int len)
         if ((len == 3 && name[0] == 'S' && name[1] == 'T' && name[2] == 'R') ||
             (len == 4 && name[0] == 'S' && name[1] == 'T' && name[2] == 'R' && name[3] == '$')) return FN_STR;
         if (len == 3 && name[0] == 'S' && name[1] == 'P' && name[2] == 'C') return FN_SPC;
+        if (len == 6 && name[0] == 'S' && name[1] == 'Y' && name[2] == 'S' && name[3] == 'T' && name[4] == 'E' && name[5] == 'M') return FN_SYSTEM;
         return FN_NONE;
     case 'C':
         if ((len == 3 && name[0] == 'C' && name[1] == 'H' && name[2] == 'R') ||
@@ -1475,12 +1520,18 @@ static int function_lookup(const char *name, int len)
     case 'A':
         if (len == 3 && name[0] == 'A' && name[1] == 'B' && name[2] == 'S') return FN_ABS;
         if (len == 3 && name[0] == 'A' && name[1] == 'S' && name[2] == 'C') return FN_ASC;
+        if (len == 4 && name[0] == 'A' && name[1] == 'R' && name[2] == 'G' && name[3] == 'C') return FN_ARGC;
+        if ((len == 3 && name[0] == 'A' && name[1] == 'R' && name[2] == 'G') ||
+            (len == 4 && name[0] == 'A' && name[1] == 'R' && name[2] == 'G' && name[3] == '$')) return FN_ARG;
         return FN_NONE;
     case 'I':
         if (len == 3 && name[0] == 'I' && name[1] == 'N' && name[2] == 'T') return FN_INT;
         return FN_NONE;
     case 'E':
         if (len == 3 && name[0] == 'E' && name[1] == 'X' && name[2] == 'P') return FN_EXP;
+        if ((len == 4 && name[0] == 'E' && name[1] == 'X' && name[2] == 'E' && name[3] == 'C') ||
+            (len == 5 && name[0] == 'E' && name[1] == 'X' && name[2] == 'E' && name[3] == 'C' && name[4] == '$'))
+            return FN_EXEC;
         return FN_NONE;
     case 'L':
         if (len == 3 && name[0] == 'L' && name[1] == 'O' && name[2] == 'G') return FN_LOG;
@@ -1691,6 +1742,16 @@ static struct value eval_function(const char *name, char **p)
         return make_num(0.0);
     }
     (*p)++;
+    skip_spaces(p);
+    if (code == FN_ARGC) {
+        if (**p != ')') {
+            runtime_error("ARGC takes no arguments");
+            return make_num(0.0);
+        }
+        (*p)++;
+        skip_spaces(p);
+        return make_num((double)script_argc);
+    }
     arg = eval_expr(p);
     skip_spaces(p);
 
@@ -2114,6 +2175,25 @@ static struct value eval_function(const char *name, char **p)
         out[n] = '\0';
         return make_str(out);
     }
+    case FN_ARG: {
+        int idx;
+        ensure_num(&arg);
+        idx = (int)arg.num;
+        if (idx == 0)
+            return make_str(script_path ? script_path : "");
+        if (idx < 1 || idx > script_argc || !script_argv)
+            return make_str("");
+        return make_str(script_argv[idx - 1]);
+    }
+    case FN_SYSTEM: {
+        ensure_str(&arg);
+        return make_num((double)do_system(arg.str));
+    }
+    case FN_EXEC: {
+        ensure_str(&arg);
+        do_exec(arg.str, outbuf, sizeof(outbuf));
+        return make_str(outbuf);
+    }
     default:
         runtime_error("Unknown function");
         return make_num(0.0);
@@ -2379,7 +2459,9 @@ static struct value eval_factor(char **p)
             starts_with_kw(*p, "STR") || starts_with_kw(*p, "CHR") || starts_with_kw(*p, "ASC") ||
             starts_with_kw(*p, "TAB") || starts_with_kw(*p, "SPC") || starts_with_kw(*p, "MID") ||
             starts_with_kw(*p, "LEFT") || starts_with_kw(*p, "RIGHT") ||
-            starts_with_kw(*p, "UCASE") || starts_with_kw(*p, "LCASE")) {
+            starts_with_kw(*p, "UCASE") || starts_with_kw(*p, "LCASE") ||
+            starts_with_kw(*p, "ARGC") || starts_with_kw(*p, "ARG") ||
+            starts_with_kw(*p, "SYSTEM") || starts_with_kw(*p, "EXEC")) {
             char namebuf[8];
             char *q;
             q = *p;
@@ -3955,8 +4037,11 @@ static void load_program(const char *path)
     build_label_table();
 }
 
-static void run_program(void)
+static void run_program(const char *script_path_arg, int nargs, char **args)
 {
+    script_path = script_path_arg;
+    script_argc = nargs;
+    script_argv = args;
     halted = 0;
     current_line = 0;
     statement_pos = NULL;
@@ -4060,6 +4145,6 @@ int main(int argc, char **argv)
     }
 
     load_program(prog_path);
-    run_program();
+    run_program(prog_path, argc - (i + 1), (argc > (i + 1)) ? (argv + (i + 1)) : NULL);
     return 0;
 }

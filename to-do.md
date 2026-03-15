@@ -24,7 +24,7 @@
   * Quitting out of the interpreter should always restore the cursor if poss
 
 * PETSCII symbols
-  * Unicode stand-ins
+  * ~Unicode stand-ins~
   * Bitmap rendering of 320x200 pixel or 40x25 characters (SDL? Raylib?)
 
 * Subroutines and Functions
@@ -45,25 +45,15 @@
   * Allow splitting larger programs into multiple source files / libraries while preserving line-numbered semantics
   * Consider search paths and guarding against recursive includes
 
-* Command-line arguments
-  * Eg. ./basic test.bas argument1 argument2
-  * Guess these would map to a string array by splitting the arguments by ' '?
-
-* Standard in/out handling
-  * Pipe into and out from ./basic ?
-  * Standard error?
-
-* Execute system / CLI commands
-  * Command ("OS"?) that executes CLI commands
-  * Is it possible to have results returned? Eg. `result$ = os("echo test")`
-  * What about large/long-running programs such as `cURL`?
-
-
 ---
 
 **Completed (removed from list):**
+- **Command-line arguments** — `ARGC()` and `ARG$(n)` (ARG$(0)=script path, ARG$(1)…=args). Run: `./basic script.bas arg1 arg2`.
+- **Standard in/out** — `INPUT` reads stdin, `PRINT` writes stdout; errors/usage to stderr. Pipes work (e.g. `echo 42 | ./basic prog.bas`).
+- **Execute system commands** — `SYSTEM("cmd")` runs a command and returns exit code; `EXEC$("cmd")` runs and returns stdout as a string (see README and `examples/scripting.bas`).
 - Multi-dimensional arrays — `DIM A(x,y)` (and up to 3 dimensions) in `basic.c`.
 - **CLR statement** — Resets all variables (scalar and array elements) to 0/empty, clears GOSUB and FOR stacks, resets DATA pointer; DEF FN definitions are kept.
 - **String case utilities** — `UCASE$(s)` and `LCASE$(s)` implemented (ASCII `toupper`/`tolower`); use in expressions and PRINT.
 - **File I/O** — `OPEN lfn, device, secondary, "filename"` (device 1: file; secondary 0=read, 1=write, 2=append), `PRINT# lfn, ...`, `INPUT# lfn, var,...`, `GET# lfn, stringvar`, `CLOSE [lfn]`. `ST` (status) set after INPUT#/GET# (0=ok, 64=EOF, 1=error). Tests: `tests/fileio.bas`, `tests/fileeof.bas`, `tests/test_get_hash.bas`.
+- **RESTORE** — resets DATA pointer so next READ uses the first DATA value again (C64-style).
 

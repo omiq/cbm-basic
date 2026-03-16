@@ -43,11 +43,30 @@ jobs:
         run: |
           make
 
+      - name: Run tests (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          set -e
+          for t in tests/*.bas; do
+            echo "Running $t"
+            ./basic -petscii "$t" >/dev/null
+          done
+
       - name: Build (Windows)
         if: runner.os == 'Windows'
         run: |
           choco install -y make
           make
+
+      - name: Run tests (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -e
+          for t in tests/*.bas; do
+            echo "Running $t"
+            ./basic.exe -petscii "$t" >/dev/null
+          done
 
       - name: Package artifact (Unix)
         if: runner.os != 'Windows'

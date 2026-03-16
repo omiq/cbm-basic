@@ -211,22 +211,25 @@ In `-petscii` mode, `CHR$` behaves in a C64-like way: control and color codes ar
   - `CHR$(18)`: reverse video on (`ESC[7m]`).
   - `CHR$(146)`: reverse video off (`ESC[27m]`).
 - **Basic text colors** (ANSI approximations of C64 colors)
-  - `CHR$(144)`: black (`ESC[30m]`).
-  - `CHR$(5)`: white (`ESC[37m]`).
-  - `CHR$(28)`: red (`ESC[31m]`).
-  - `CHR$(159)`: cyan (`ESC[36m]`).
-  - `CHR$(156)`: purple (`ESC[35m]`).
-  - `CHR$(30)`: green (`ESC[32m]`).
-  - `CHR$(31)`: blue (`ESC[34m]`).
-  - `CHR$(158)`: yellow (`ESC[33m]`).
-  - `CHR$(129)`: orange (`ESC[38;5;208m]`).
-  - `CHR$(149)`: brown (`ESC[33m]`).
-  - `CHR$(150)`: light red (`ESC[91m]`).
-  - `CHR$(151)`: dark gray (`ESC[90m]`).
-  - `CHR$(152)`: medium gray (`ESC[37m]`).
-  - `CHR$(153)`: light green (`ESC[92m]`).
-  - `CHR$(154)`: light blue (`ESC[94m]`).
-  - `CHR$(155)`: light gray (`ESC[97m]`).
+
+  | C64 index (`COLOR`/`BACKGROUND`) | PETSCII `CHR$()` | Token(s) you can use in `{TOKENS}` | Approximate colour |
+  | -------------------------------- | ---------------- | ----------------------------------- | ------------------- |
+  | 0                                | `CHR$(144)`      | `BLACK`                             | black               |
+  | 1                                | `CHR$(5)`        | `WHITE`                             | white               |
+  | 2                                | `CHR$(28)`       | `RED`                               | red                 |
+  | 3                                | `CHR$(159)`      | `CYAN`                              | cyan                |
+  | 4                                | `CHR$(156)`      | `PURPLE`                            | purple              |
+  | 5                                | `CHR$(30)`       | `GREEN`                             | green               |
+  | 6                                | `CHR$(31)`       | `BLUE`                              | blue                |
+  | 7                                | `CHR$(158)`      | `YELLOW`                            | yellow              |
+  | 8                                | `CHR$(129)`      | `ORANGE`                            | orange              |
+  | 9                                | `CHR$(149)`      | `BROWN`                             | brown               |
+  | 10                               | `CHR$(150)`      | `PINK` / light red                  | light red           |
+  | 11                               | `CHR$(151)`      | `GRAY1` / `GREY1`                   | dark gray           |
+  | 12                               | `CHR$(152)`      | `GRAY2` / `GREY2`                   | medium gray         |
+  | 13                               | `CHR$(153)`      | `LIGHTGREEN` / `LIGHT GREEN`        | light green         |
+  | 14                               | `CHR$(154)`      | `LIGHTBLUE` / `LIGHT BLUE`          | light blue          |
+  | 15                               | `CHR$(155)`      | `GRAY3` / `GREY3`                   | light gray          |
 
 If you do not pass a file name, the interpreter will print usage information:
 

@@ -649,12 +649,12 @@
 6280 RETURN
 6290 REM ** DIRECTION HELPER **
 6300 PRINT
-6310 PRINT " ENTER A NUMERIC      4  3  2"
+6310 PRINT " ENTER A NUMBER       4  3  2"
 6320 PRINT " BETWEEN 1 AND 9       . . ."
 6330 PRINT "                        ..."
 6340 PRINT " DECIMALS MAY BE    5 ---*--- 1"
-6350 PRINT " USED                   ..."
-6360 PRINT " (IE 8.527 ETC.)       . . ."
+6350 PRINT " USED (EG. 8.57)        ..."
+6360 PRINT "                       . . ."
 6370 PRINT "                      6  7  8"
 6380 RETURN
 6390 REM ** GALAXY MAP ROMAN NUMERALS **

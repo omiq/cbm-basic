@@ -1,4 +1,5 @@
-10 A$="abcdefghijklmnopq"
-20 print right$(a$,5)
-30 print left$(a$,5)
+#!/Users/chrisg/github/cbm-basic/basic
+A$="abcdefghijklmnopq"
+print right$(a$,5)
+print left$(a$,5)
 

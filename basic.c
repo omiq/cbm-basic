@@ -1605,18 +1605,16 @@ static void do_sleep_ticks(double ticks)
     Sleep(ms);
 }
 #else
-/* POSIX/Unix: original usleep/select-based implementation for 60Hz ticks. */
+/* POSIX/Unix: select-based implementation for 60Hz ticks (no usleep dependency). */
 static void do_sleep_ticks(double ticks)
 {
     long usec;
     unsigned int sec;
-#ifndef HAVE_USLEEP
     long start;
     long target_ticks;
     int tps;
     struct tms tm;
     double remaining_ticks;
-#endif
     if (ticks <= 0.0) {
         return;
     }
@@ -1626,15 +1624,7 @@ static void do_sleep_ticks(double ticks)
     }
     sec = (unsigned int)(usec / 1000000L);
     usec = usec % 1000000L;
-#ifdef HAVE_USLEEP
-    if (sec > 0) {
-        sleep(sec);
-    }
-    if (usec > 0) {
-        usleep((unsigned int)usec);
-    }
-#else
-    /* No usleep; use select() for sub-second delay if available */
+    /* Use select() for sub-second delay if available */
     {
         struct timeval tv;
         if (sec > 0) {
@@ -1646,7 +1636,6 @@ static void do_sleep_ticks(double ticks)
             select(0, (fd_set *)0, (fd_set *)0, (fd_set *)0, &tv);
         }
     }
-#endif
 }
 #endif
 

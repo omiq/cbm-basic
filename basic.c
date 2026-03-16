@@ -3491,10 +3491,7 @@ static void statement_for(char **p)
     struct value startv, endv, stepv;
     int is_array;
     int is_string;
-    if (for_top >= MAX_FOR) {
-        runtime_error("FOR stack overflow");
-        return;
-    }
+    int i;
     vp = get_var_reference(p, &is_array, &is_string);
     if (!vp) {
         return;
@@ -3532,18 +3529,37 @@ static void statement_for(char **p)
         stepv = make_num(1.0);
     }
     *vp = startv;
+
+    /* Recover loop variable name (two-letter key) from vp by searching var table. */
     for_stack[for_top].name1 = ' ';
     for_stack[for_top].name2 = ' ';
     if (var_count > 0) {
-        /* Recover name from vp by searching var table */
-        int i;
         for (i = 0; i < var_count; i++) {
-            if (&vars[i].scalar == vp || (vars[i].is_array && vp >= vars[i].array && vp < vars[i].array + vars[i].size)) {
+            if (&vars[i].scalar == vp ||
+                (vars[i].is_array && vp >= vars[i].array && vp < vars[i].array + vars[i].size)) {
                 for_stack[for_top].name1 = vars[i].name1;
                 for_stack[for_top].name2 = vars[i].name2;
                 break;
             }
         }
+    }
+
+    /* Abandon any outstanding FOR for the same control variable.
+     * This models classic BASIC behaviour where jumping out of a loop
+     * effectively discards it, so reusing the same variable does not
+     * grow the FOR stack without bound.
+     */
+    for (i = for_top - 1; i >= 0; i--) {
+        if (for_stack[i].name1 == for_stack[for_top].name1 &&
+            for_stack[i].name2 == for_stack[for_top].name2) {
+            for_top = i;
+            break;
+        }
+    }
+
+    if (for_top >= MAX_FOR) {
+        runtime_error("FOR stack overflow");
+        return;
     }
     for_stack[for_top].end_value = endv.num;
     for_stack[for_top].step = stepv.num;

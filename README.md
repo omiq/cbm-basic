@@ -22,7 +22,7 @@ The project started as an expansion on an original LLM-generated demo project by
 
 ## 💾 DOWNLOADS
 
-[The latest binaries for Win/Mac/Linux are in ***Releases](https://github.com/omiq/cbm-basic/releases/)***. 
+[The latest binaries for Win/Mac/Linux are in ***Releases***](https://github.com/omiq/cbm-basic/releases/). 
 
 Extract the files after downloading.
 

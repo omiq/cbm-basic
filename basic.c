@@ -1029,12 +1029,19 @@ static void ensure_num(struct value *v)
     }
 }
 
-/* Ensure the value is string or raise a runtime error. */
+/* Ensure the value is string; auto-convert numeric to string when needed. */
 static void ensure_str(struct value *v)
 {
-    if (v->type != VAL_STR) {
-        runtime_error("String value required");
+    if (v->type == VAL_STR) {
+        return;
     }
+    if (v->type == VAL_NUM) {
+        char buf[64];
+        sprintf(buf, "%g", v->num);
+        *v = make_str(buf);
+        return;
+    }
+    runtime_error("String value required");
 }
 
 /* Emit spaces and track current print column. */
@@ -2221,6 +2228,50 @@ static struct value eval_function(const char *name, char **p)
         }
     }
     case FN_RIGHT: {
+        struct value src = arg;
+        struct value v_len;
+        int sub_len;
+        int s_len;
+        int start_pos;
+
+        ensure_str(&src);
+        skip_spaces(p);
+        if (**p != ',') {
+            runtime_error("RIGHT requires 2 arguments");
+            return make_str("");
+        }
+        (*p)++;
+        v_len = eval_expr(p);
+        ensure_num(&v_len);
+        skip_spaces(p);
+        if (**p == ')') {
+            (*p)++;
+        } else {
+            runtime_error("Missing ')'");
+        }
+
+        sub_len = (int)v_len.num;
+        if (sub_len <= 0) {
+            return make_str("");
+        }
+        s_len = (int)strlen(src.str);
+        if (sub_len > s_len) {
+            sub_len = s_len;
+        }
+        if (sub_len >= MAX_STR_LEN) {
+            sub_len = MAX_STR_LEN - 1;
+        }
+        start_pos = s_len - sub_len;
+        if (start_pos < 0) {
+            start_pos = 0;
+        }
+        {
+            char out[MAX_STR_LEN];
+            memcpy(out, src.str + start_pos, (size_t)sub_len);
+            out[sub_len] = '\0';
+            return make_str(out);
+        }
+    }
     case FN_INSTR: {
         /* INSTR(source$, search$) -> 1-based index or 0 if not found. */
         struct value v_source = arg;
@@ -2280,50 +2331,6 @@ static struct value eval_function(const char *name, char **p)
         v = (long)arg.num;
         sprintf(outbuf, "%lX", v);
         return make_str(outbuf);
-    }
-        struct value src = arg;
-        struct value v_len;
-        int sub_len;
-        int s_len;
-        int start_pos;
-
-        ensure_str(&src);
-        skip_spaces(p);
-        if (**p != ',') {
-            runtime_error("RIGHT requires 2 arguments");
-            return make_str("");
-        }
-        (*p)++;
-        v_len = eval_expr(p);
-        ensure_num(&v_len);
-        skip_spaces(p);
-        if (**p == ')') {
-            (*p)++;
-        } else {
-            runtime_error("Missing ')'");
-        }
-
-        sub_len = (int)v_len.num;
-        if (sub_len <= 0) {
-            return make_str("");
-        }
-        s_len = (int)strlen(src.str);
-        if (sub_len > s_len) {
-            sub_len = s_len;
-        }
-        if (sub_len >= MAX_STR_LEN) {
-            sub_len = MAX_STR_LEN - 1;
-        }
-        start_pos = s_len - sub_len;
-        if (start_pos < 0) {
-            start_pos = 0;
-        }
-        {
-            char out[MAX_STR_LEN];
-            memcpy(out, src.str + start_pos, (size_t)sub_len);
-            out[sub_len] = '\0';
-            return make_str(out);
-        }
     }
     case FN_UCASE: {
         char out[MAX_STR_LEN];

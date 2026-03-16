@@ -16,11 +16,11 @@
 110 PRINT HCOL$;"{YELLOW}   --S-U-P-E-R---S-T-A-R---T-R-E-K--"
 115 PRINT "{WHITE}"
 120 FOR N=1 TO 5 : PRINT : NEXT : PRINT BCOL$;
-130 PRINT "                    ,------*------,"
-140 PRINT "    ,-------------   ---  ------"
-150 PRINT "     -------- --      / /"
-160 PRINT "         ,--- -------/ /--,"
-170 PRINT "          ----------------" : PRINT DCOL$
+130 PRINT "                    ,------*-------,"
+140 PRINT "    ,-------------,  '---  -------'"
+150 PRINT "    '--------\\--'      / /"
+160 PRINT "          ,---\\-------/ /--,"
+170 PRINT "          '----------------'" : PRINT DCOL$
 180 PRINT "    THE USS ENTERPRISE --- NCC-1701"
 190 FOR N=1 TO 5 : PRINT FCOL$ : NEXT : CRSTART=1 : GOSUB 6020
 200 X9=RND(-TI) : REM ** RANDOM SEED GENERATOR **

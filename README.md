@@ -371,3 +371,8 @@ If you prefer to invoke the compiler directly:
   gcc -std=c99 -Wall -O2 basic.c -lm -o basic.exe
   ```
 
+## Credits
+
+The original idea was based on a BASIC project by David Plummer. His video is worth watching:
+
+https://www.youtube.com/watch?v=PyUuLYJLhUA

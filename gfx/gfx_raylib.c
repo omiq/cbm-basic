@@ -1,15 +1,25 @@
-/* gfx/gfx_raylib.c – Phase 1 skeleton: raylib window + render loop.
+/* gfx/gfx_raylib.c – Raylib front-end for CBM-BASIC GFX.
  *
- * Standalone demo that initialises GfxVideoState, writes a test pattern,
- * opens a 640×400 window (2× native 320×200), and renders the 40×25 text
- * screen from video memory using a built-in 8×8 character ROM.
- *
- * Build: see the "gfx-demo" target in the Makefile.
+ * Two compile modes:
+ *   1. Standalone demo  (no GFX_VIDEO): builds as gfx-demo with a
+ *      hardcoded test pattern.
+ *   2. Integrated build  (GFX_VIDEO defined): builds as basic-gfx,
+ *      runs a .bas program in a worker thread while the main thread
+ *      drives the raylib render loop.  POKE/PEEK in the BASIC program
+ *      write/read the shared GfxVideoState rendered each frame.
  */
 
 #include "raylib.h"
 #include "gfx_video.h"
 #include <string.h>
+#include <stdio.h>
+
+#ifdef GFX_VIDEO
+#include <pthread.h>
+#include "../basic_api.h"
+#endif
+
+/* ── Screen geometry ──────────────────────────────────────────────── */
 
 #define SCREEN_COLS  40
 #define SCREEN_ROWS  25
@@ -17,9 +27,9 @@
 #define CELL_H        8
 #define NATIVE_W     (SCREEN_COLS * CELL_W)   /* 320 */
 #define NATIVE_H     (SCREEN_ROWS * CELL_H)   /* 200 */
-#define SCALE         2
-#define WIN_W        (NATIVE_W * SCALE)        /* 640 */
-#define WIN_H        (NATIVE_H * SCALE)        /* 400 */
+#define SCALE         3
+#define WIN_W        (NATIVE_W * SCALE)        /* 960 */
+#define WIN_H        (NATIVE_H * SCALE)        /* 600 */
 
 /* ── C64 palette (approximate RGB values) ─────────────────────────── */
 
@@ -113,119 +123,12 @@ static const uint8_t default_font[64][8] = {
     /*63 ?  */ {0x3C,0x66,0x06,0x0C,0x18,0x00,0x18,0x00},
 };
 
-/* Copy the built-in font into the video state's character ROM region. */
 static void load_default_charrom(GfxVideoState *s)
 {
     memcpy(s->chars, default_font, sizeof(default_font));
 }
 
-/* ── ASCII → C64 screen code (uppercase only) ────────────────────── */
-
-static uint8_t ascii_to_screencode(char c)
-{
-    if (c >= 'A' && c <= 'Z') return (uint8_t)(c - 'A' + 1);
-    if (c >= 'a' && c <= 'z') return (uint8_t)(c - 'a' + 1);
-    if (c == '@') return 0;
-    if (c >= ' ' && c <= '?') return (uint8_t)c;
-    return 32;  /* fallback: space */
-}
-
-/* Write a NUL-terminated string into screen RAM at (col, row).
- * If reversed != 0, screen codes are OR'd with 0x80 (reverse video). */
-static void write_text(GfxVideoState *s, int col, int row,
-                       const char *text, uint8_t color_idx)
-{
-    int i;
-    for (i = 0; text[i] != '\0'; i++) {
-        int pos = row * SCREEN_COLS + col + i;
-        if (pos < 0 || pos >= (int)GFX_TEXT_SIZE) break;
-        s->screen[pos] = ascii_to_screencode(text[i]);
-        s->color[pos]  = color_idx;
-    }
-}
-
-static void write_text_reversed(GfxVideoState *s, int col, int row,
-                                const char *text, uint8_t color_idx)
-{
-    int i;
-    for (i = 0; text[i] != '\0'; i++) {
-        int pos = row * SCREEN_COLS + col + i;
-        if (pos < 0 || pos >= (int)GFX_TEXT_SIZE) break;
-        s->screen[pos] = ascii_to_screencode(text[i]) | 0x80;
-        s->color[pos]  = color_idx;
-    }
-}
-
-/* ── Test pattern ─────────────────────────────────────────────────── */
-
-static void setup_demo(GfxVideoState *s)
-{
-    int row;
-
-    /* Default: all cells = space (32), light blue text on blue bg. */
-    memset(s->screen, 32, GFX_TEXT_SIZE);
-    memset(s->color, 14, GFX_COLOR_SIZE);    /* 14 = light blue */
-
-    /* Title bar */
-    write_text(s, 4, 1, "**** CBM-BASIC GFX V1 ****", 1);
-
-    /* Subtitle */
-    write_text(s, 4, 3, "RAYLIB PHASE 1 - VIDEO MEMORY", 14);
-    write_text(s, 4, 4, "40X25 TEXT SCREEN + 8X8 FONT", 14);
-
-    /* Character ROM showcase */
-    write_text(s, 1, 6, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", 1);
-    write_text(s, 1, 7, "0123456789 !@#$%&()+=-.,;:", 15);
-
-    /* Palette display: 16 colour swatches (reversed spaces = solid blocks) */
-    write_text(s, 1, 9, "COLOUR PALETTE:", 1);
-    for (row = 0; row < 16; row++) {
-        int r = 11 + row / 8;
-        int col_start = (row % 8) * 5;
-        int c;
-        for (c = 0; c < 4; c++) {
-            int pos = r * SCREEN_COLS + col_start + c;
-            s->screen[pos] = 32 | 0x80;   /* reversed space = solid block */
-            s->color[pos]  = (uint8_t)row;
-        }
-    }
-    /* Label the palette rows */
-    write_text(s, 1, 13, "BLK  WHT  RED  CYN  PUR", 15);
-    write_text(s, 1, 14, "GRN  BLU  YEL  ORG  BRN", 15);
-
-    /* Ready prompt */
-    write_text(s, 0, 16, "READY.", 14);
-
-    /* Colour stripes: fill each row with reversed spaces (solid blocks),
-     * then write reversed text so letters appear as blue-on-colour.
-     * This is the authentic C64 technique for coloured backgrounds. */
-    {
-        static const struct { uint8_t ci; const char *label; } stripes[] = {
-            { 2,  "    RED STRIPE    " },
-            { 3,  "   CYAN STRIPE    " },
-            { 4,  "  PURPLE STRIPE   " },
-            { 5,  "   GREEN STRIPE   " },
-            { 6,  "   BLUE STRIPE    " },
-            { 7,  "  YELLOW STRIPE   " },
-        };
-        int si;
-        for (si = 0; si < 6; si++) {
-            int r = 18 + si;
-            int c;
-            for (c = 0; c < SCREEN_COLS; c++) {
-                int pos = r * SCREEN_COLS + c;
-                s->screen[pos] = 32 | 0x80;   /* reversed space */
-                s->color[pos]  = stripes[si].ci;
-            }
-            write_text_reversed(s, 11, r, stripes[si].label,
-                                stripes[si].ci);
-        }
-    }
-
-    write_text(s, 3, 24, "PRESS ESC OR CLOSE WINDOW TO EXIT", 15);
-}
-
-/* ── Renderer ─────────────────────────────────────────────────────── */
+/* ── Renderer (shared by both modes) ──────────────────────────────── */
 
 static void render_text_screen(const GfxVideoState *s,
                                RenderTexture2D target)
@@ -269,20 +172,178 @@ static void render_text_screen(const GfxVideoState *s,
     EndTextureMode();
 }
 
-/* ── Entry point ──────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════
+ *  MODE 1: basic-gfx  (GFX_VIDEO defined)
+ *  Runs a .bas program in a worker thread; main thread renders.
+ * ══════════════════════════════════════════════════════════════════════ */
+#ifdef GFX_VIDEO
+
+typedef struct {
+    const char *prog_path;
+    int nargs;
+    char **args;
+} InterpreterArgs;
+
+static void *interpreter_thread(void *arg)
+{
+    InterpreterArgs *ia = (InterpreterArgs *)arg;
+    basic_load(ia->prog_path);
+    basic_run(ia->prog_path, ia->nargs, ia->args);
+    return NULL;
+}
+
+int main(int argc, char **argv)
+{
+    GfxVideoState vs;
+    RenderTexture2D target;
+    pthread_t tid;
+    InterpreterArgs ia;
+    int prog_idx;
+    const char *prog_path;
+
+    prog_idx = basic_parse_args(argc, argv);
+    if (prog_idx < 0) {
+        fprintf(stderr,
+                "Usage: %s [-petscii] [-palette ansi|c64] <program.bas> [args...]\n",
+                argv[0]);
+        return 1;
+    }
+    prog_path = argv[prog_idx];
+
+    gfx_video_init(&vs);
+    load_default_charrom(&vs);
+    memset(vs.screen, 32, GFX_TEXT_SIZE);
+    memset(vs.color, 14, GFX_COLOR_SIZE);
+
+    basic_set_video(&vs);
+
+    ia.prog_path = prog_path;
+    ia.nargs     = argc - (prog_idx + 1);
+    ia.args      = (argc > (prog_idx + 1)) ? (argv + (prog_idx + 1)) : NULL;
+
+    InitWindow(WIN_W, WIN_H, "CBM-BASIC GFX");
+    SetTargetFPS(60);
+    target = LoadRenderTexture(NATIVE_W, NATIVE_H);
+
+    pthread_create(&tid, NULL, interpreter_thread, &ia);
+
+    while (!WindowShouldClose()) {
+        render_text_screen(&vs, target);
+
+        BeginDrawing();
+        DrawTexturePro(
+            target.texture,
+            (Rectangle){ 0, 0, (float)NATIVE_W, -(float)NATIVE_H },
+            (Rectangle){ 0, 0, (float)WIN_W, (float)WIN_H },
+            (Vector2){ 0, 0 }, 0.0f, WHITE);
+        EndDrawing();
+    }
+
+    UnloadRenderTexture(target);
+    CloseWindow();
+    pthread_join(tid, NULL);
+    return 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+ *  MODE 2: gfx-demo  (GFX_VIDEO not defined)
+ *  Standalone test pattern – no interpreter, no threading.
+ * ══════════════════════════════════════════════════════════════════════ */
+#else /* !GFX_VIDEO */
+
+static uint8_t ascii_to_screencode(char c)
+{
+    if (c >= 'A' && c <= 'Z') return (uint8_t)(c - 'A' + 1);
+    if (c >= 'a' && c <= 'z') return (uint8_t)(c - 'a' + 1);
+    if (c == '@') return 0;
+    if (c >= ' ' && c <= '?') return (uint8_t)c;
+    return 32;
+}
+
+static void write_text(GfxVideoState *s, int col, int row,
+                       const char *text, uint8_t color_idx)
+{
+    int i;
+    for (i = 0; text[i] != '\0'; i++) {
+        int pos = row * SCREEN_COLS + col + i;
+        if (pos < 0 || pos >= (int)GFX_TEXT_SIZE) break;
+        s->screen[pos] = ascii_to_screencode(text[i]);
+        s->color[pos]  = color_idx;
+    }
+}
+
+static void write_text_reversed(GfxVideoState *s, int col, int row,
+                                const char *text, uint8_t color_idx)
+{
+    int i;
+    for (i = 0; text[i] != '\0'; i++) {
+        int pos = row * SCREEN_COLS + col + i;
+        if (pos < 0 || pos >= (int)GFX_TEXT_SIZE) break;
+        s->screen[pos] = ascii_to_screencode(text[i]) | 0x80;
+        s->color[pos]  = color_idx;
+    }
+}
+
+static void setup_demo(GfxVideoState *s)
+{
+    int row;
+
+    memset(s->screen, 32, GFX_TEXT_SIZE);
+    memset(s->color, 14, GFX_COLOR_SIZE);
+
+    write_text(s, 4, 1, "**** CBM-BASIC GFX V1 ****", 1);
+    write_text(s, 4, 3, "RAYLIB PHASE 1 - VIDEO MEMORY", 14);
+    write_text(s, 4, 4, "40X25 TEXT SCREEN + 8X8 FONT", 14);
+    write_text(s, 1, 6, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", 1);
+    write_text(s, 1, 7, "0123456789 !@#$%&()+=-.,;:", 15);
+
+    write_text(s, 1, 9, "COLOUR PALETTE:", 1);
+    for (row = 0; row < 16; row++) {
+        int r = 11 + row / 8;
+        int col_start = (row % 8) * 5;
+        int c;
+        for (c = 0; c < 4; c++) {
+            int pos = r * SCREEN_COLS + col_start + c;
+            s->screen[pos] = 32 | 0x80;
+            s->color[pos]  = (uint8_t)row;
+        }
+    }
+    write_text(s, 1, 13, "BLK  WHT  RED  CYN  PUR", 15);
+    write_text(s, 1, 14, "GRN  BLU  YEL  ORG  BRN", 15);
+    write_text(s, 0, 16, "READY.", 14);
+
+    {
+        static const struct { uint8_t ci; const char *label; } stripes[] = {
+            { 2, "    RED STRIPE    " },  { 3, "   CYAN STRIPE    " },
+            { 4, "  PURPLE STRIPE   " },  { 5, "   GREEN STRIPE   " },
+            { 6, "   BLUE STRIPE    " },  { 7, "  YELLOW STRIPE   " },
+        };
+        int si;
+        for (si = 0; si < 6; si++) {
+            int r = 18 + si, c;
+            for (c = 0; c < SCREEN_COLS; c++) {
+                int pos = r * SCREEN_COLS + c;
+                s->screen[pos] = 32 | 0x80;
+                s->color[pos]  = stripes[si].ci;
+            }
+            write_text_reversed(s, 11, r, stripes[si].label, stripes[si].ci);
+        }
+    }
+    write_text(s, 3, 24, "PRESS ESC OR CLOSE WINDOW TO EXIT", 15);
+}
 
 int main(void)
 {
     GfxVideoState vs;
+    RenderTexture2D target;
 
     gfx_video_init(&vs);
     load_default_charrom(&vs);
     setup_demo(&vs);
 
-    InitWindow(WIN_W, WIN_H, "CBM-BASIC GFX – Phase 1 Demo");
+    InitWindow(WIN_W, WIN_H, "CBM-BASIC GFX \xe2\x80\x93 Phase 1 Demo");
     SetTargetFPS(60);
-
-    RenderTexture2D target = LoadRenderTexture(NATIVE_W, NATIVE_H);
+    target = LoadRenderTexture(NATIVE_W, NATIVE_H);
 
     while (!WindowShouldClose()) {
         render_text_screen(&vs, target);
@@ -300,3 +361,5 @@ int main(void)
     CloseWindow();
     return 0;
 }
+
+#endif /* !GFX_VIDEO */

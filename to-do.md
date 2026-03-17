@@ -45,6 +45,11 @@
   * Teach `load_program` to ignore an initial `#!...` shebang line before deciding numbered vs numberless mode
   * Allow Unix-style executable BASIC scripts with a shebang (`#!/usr/bin/env ./basic`) without triggering the "mixed numbered and numberless" error
 
+* Reserved-word / identifier hygiene
+  * Add a lightweight lexical pass after loading that scans identifiers (variables, labels, DEF FN names)
+  * Detect reserved keywords (statements and intrinsic functions) used as labels or variables in ambiguous ways and emit clear diagnostics before execution
+  * Improve error messages where possible by pointing to likely misuse of reserved words instead of only reporting low-level parse/runtime errors (e.g. "Numeric value required")
+
 ---
 
 **Completed (removed from list):**

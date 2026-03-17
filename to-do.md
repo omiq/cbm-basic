@@ -1,13 +1,11 @@
 # Features to add/to-do
 
-* INSTR
-  * Not found in c64 but was in later commodore basic
-  * https://www.c64-wiki.com/wiki/INSTR
+* ~INSTR~
 
 * Flexible DATA read
   * RESTORE [line number]
 
-* Decimal ↔ hexadecimal conversion: DEC(),HEX$()
+* ~Decimal ↔ hexadecimal conversion: DEC(),HEX$()~
 
 * IF THEN ELSE END IF
   * Internally can be handled like : but this syntax is easier to read and understand
@@ -15,13 +13,11 @@
 * Structured loops: DO,LOOP,WHILE,UNTIL,EXIT
   * Internally can be handled with labels and gotos but is far easier to understand
 
-* Colour without pokes
-  * background command for setting screen colour
-  * colour/color for text colour
+* ~Colour without pokes~
+  * ~background command for setting screen colour~
+  * ~colour/color for text colour~
 
-* Cursor On/Off
-  * Uses ANSI escape codes to hide or show the blinking cursor
-  * Quitting out of the interpreter should always restore the cursor if poss
+* ~Cursor On/Off~
 
 * PETSCII symbols
   * ~Unicode stand-ins~

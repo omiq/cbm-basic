@@ -1,0 +1,292 @@
+/* gfx/gfx_raylib.c – Phase 1 skeleton: raylib window + render loop.
+ *
+ * Standalone demo that initialises GfxVideoState, writes a test pattern,
+ * opens a 640×400 window (2× native 320×200), and renders the 40×25 text
+ * screen from video memory using a built-in 8×8 character ROM.
+ *
+ * Build: see the "gfx-demo" target in the Makefile.
+ */
+
+#include "raylib.h"
+#include "gfx_video.h"
+#include <string.h>
+
+#define SCREEN_COLS  40
+#define SCREEN_ROWS  25
+#define CELL_W        8
+#define CELL_H        8
+#define NATIVE_W     (SCREEN_COLS * CELL_W)   /* 320 */
+#define NATIVE_H     (SCREEN_ROWS * CELL_H)   /* 200 */
+#define SCALE         2
+#define WIN_W        (NATIVE_W * SCALE)        /* 640 */
+#define WIN_H        (NATIVE_H * SCALE)        /* 400 */
+
+/* ── C64 palette (approximate RGB values) ─────────────────────────── */
+
+static const Color c64_palette[16] = {
+    { 0x00, 0x00, 0x00, 0xFF },   /*  0  Black       */
+    { 0xFF, 0xFF, 0xFF, 0xFF },   /*  1  White       */
+    { 0x88, 0x00, 0x00, 0xFF },   /*  2  Red         */
+    { 0xAA, 0xFF, 0xEE, 0xFF },   /*  3  Cyan        */
+    { 0xCC, 0x44, 0xCC, 0xFF },   /*  4  Purple      */
+    { 0x00, 0xCC, 0x55, 0xFF },   /*  5  Green       */
+    { 0x00, 0x00, 0xAA, 0xFF },   /*  6  Blue        */
+    { 0xEE, 0xEE, 0x77, 0xFF },   /*  7  Yellow      */
+    { 0xDD, 0x88, 0x55, 0xFF },   /*  8  Orange      */
+    { 0x66, 0x44, 0x00, 0xFF },   /*  9  Brown       */
+    { 0xFF, 0x77, 0x77, 0xFF },   /* 10  Light Red   */
+    { 0x33, 0x33, 0x33, 0xFF },   /* 11  Dark Gray   */
+    { 0x77, 0x77, 0x77, 0xFF },   /* 12  Medium Gray */
+    { 0xAA, 0xFF, 0x66, 0xFF },   /* 13  Light Green */
+    { 0x00, 0x88, 0xFF, 0xFF },   /* 14  Light Blue  */
+    { 0xBB, 0xBB, 0xBB, 0xFF },   /* 15  Light Gray  */
+};
+
+static const uint8_t BG_COLOR = 6;   /* default C64 blue background */
+
+/* ── Built-in 8×8 font (C64 uppercase, screen codes 0–63) ────────── */
+
+static const uint8_t default_font[64][8] = {
+    /* 0 @  */ {0x3C,0x66,0x6E,0x6E,0x60,0x62,0x3C,0x00},
+    /* 1 A  */ {0x18,0x3C,0x66,0x7E,0x66,0x66,0x66,0x00},
+    /* 2 B  */ {0x7C,0x66,0x66,0x7C,0x66,0x66,0x7C,0x00},
+    /* 3 C  */ {0x3C,0x66,0x60,0x60,0x60,0x66,0x3C,0x00},
+    /* 4 D  */ {0x78,0x6C,0x66,0x66,0x66,0x6C,0x78,0x00},
+    /* 5 E  */ {0x7E,0x60,0x60,0x78,0x60,0x60,0x7E,0x00},
+    /* 6 F  */ {0x7E,0x60,0x60,0x78,0x60,0x60,0x60,0x00},
+    /* 7 G  */ {0x3C,0x66,0x60,0x6E,0x66,0x66,0x3C,0x00},
+    /* 8 H  */ {0x66,0x66,0x66,0x7E,0x66,0x66,0x66,0x00},
+    /* 9 I  */ {0x3C,0x18,0x18,0x18,0x18,0x18,0x3C,0x00},
+    /*10 J  */ {0x1E,0x0C,0x0C,0x0C,0x0C,0x6C,0x38,0x00},
+    /*11 K  */ {0x66,0x6C,0x78,0x70,0x78,0x6C,0x66,0x00},
+    /*12 L  */ {0x60,0x60,0x60,0x60,0x60,0x60,0x7E,0x00},
+    /*13 M  */ {0x63,0x77,0x7F,0x6B,0x63,0x63,0x63,0x00},
+    /*14 N  */ {0x66,0x76,0x7E,0x7E,0x6E,0x66,0x66,0x00},
+    /*15 O  */ {0x3C,0x66,0x66,0x66,0x66,0x66,0x3C,0x00},
+    /*16 P  */ {0x7C,0x66,0x66,0x7C,0x60,0x60,0x60,0x00},
+    /*17 Q  */ {0x3C,0x66,0x66,0x66,0x66,0x3C,0x0E,0x00},
+    /*18 R  */ {0x7C,0x66,0x66,0x7C,0x78,0x6C,0x66,0x00},
+    /*19 S  */ {0x3C,0x66,0x60,0x3C,0x06,0x66,0x3C,0x00},
+    /*20 T  */ {0x7E,0x18,0x18,0x18,0x18,0x18,0x18,0x00},
+    /*21 U  */ {0x66,0x66,0x66,0x66,0x66,0x66,0x3C,0x00},
+    /*22 V  */ {0x66,0x66,0x66,0x66,0x66,0x3C,0x18,0x00},
+    /*23 W  */ {0x63,0x63,0x63,0x6B,0x7F,0x77,0x63,0x00},
+    /*24 X  */ {0x66,0x66,0x3C,0x18,0x3C,0x66,0x66,0x00},
+    /*25 Y  */ {0x66,0x66,0x66,0x3C,0x18,0x18,0x18,0x00},
+    /*26 Z  */ {0x7E,0x06,0x0C,0x18,0x30,0x60,0x7E,0x00},
+    /*27 [  */ {0x3C,0x30,0x30,0x30,0x30,0x30,0x3C,0x00},
+    /*28 £  */ {0x0C,0x12,0x30,0x7C,0x30,0x62,0xFC,0x00},
+    /*29 ]  */ {0x3C,0x0C,0x0C,0x0C,0x0C,0x0C,0x3C,0x00},
+    /*30 ↑  */ {0x18,0x3C,0x7E,0x18,0x18,0x18,0x18,0x00},
+    /*31 ←  */ {0x00,0x18,0x30,0x7E,0x30,0x18,0x00,0x00},
+    /*32    */ {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    /*33 !  */ {0x18,0x18,0x18,0x18,0x00,0x00,0x18,0x00},
+    /*34 "  */ {0x66,0x66,0x66,0x00,0x00,0x00,0x00,0x00},
+    /*35 #  */ {0x66,0x66,0xFF,0x66,0xFF,0x66,0x66,0x00},
+    /*36 $  */ {0x18,0x3E,0x60,0x3C,0x06,0x7C,0x18,0x00},
+    /*37 %  */ {0x62,0x66,0x0C,0x18,0x30,0x66,0x46,0x00},
+    /*38 &  */ {0x3C,0x66,0x3C,0x38,0x67,0x66,0x3F,0x00},
+    /*39 '  */ {0x06,0x0C,0x18,0x00,0x00,0x00,0x00,0x00},
+    /*40 (  */ {0x0C,0x18,0x30,0x30,0x30,0x18,0x0C,0x00},
+    /*41 )  */ {0x30,0x18,0x0C,0x0C,0x0C,0x18,0x30,0x00},
+    /*42 *  */ {0x00,0x66,0x3C,0xFF,0x3C,0x66,0x00,0x00},
+    /*43 +  */ {0x00,0x18,0x18,0x7E,0x18,0x18,0x00,0x00},
+    /*44 ,  */ {0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x30},
+    /*45 -  */ {0x00,0x00,0x00,0x7E,0x00,0x00,0x00,0x00},
+    /*46 .  */ {0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x00},
+    /*47 /  */ {0x00,0x03,0x06,0x0C,0x18,0x30,0x60,0x00},
+    /*48 0  */ {0x3C,0x66,0x6E,0x76,0x66,0x66,0x3C,0x00},
+    /*49 1  */ {0x18,0x18,0x38,0x18,0x18,0x18,0x7E,0x00},
+    /*50 2  */ {0x3C,0x66,0x06,0x0C,0x30,0x60,0x7E,0x00},
+    /*51 3  */ {0x3C,0x66,0x06,0x1C,0x06,0x66,0x3C,0x00},
+    /*52 4  */ {0x06,0x0E,0x1E,0x66,0x7F,0x06,0x06,0x00},
+    /*53 5  */ {0x7E,0x60,0x7C,0x06,0x06,0x66,0x3C,0x00},
+    /*54 6  */ {0x3C,0x66,0x60,0x7C,0x66,0x66,0x3C,0x00},
+    /*55 7  */ {0x7E,0x66,0x0C,0x18,0x18,0x18,0x18,0x00},
+    /*56 8  */ {0x3C,0x66,0x66,0x3C,0x66,0x66,0x3C,0x00},
+    /*57 9  */ {0x3C,0x66,0x66,0x3E,0x06,0x66,0x3C,0x00},
+    /*58 :  */ {0x00,0x00,0x18,0x00,0x00,0x18,0x00,0x00},
+    /*59 ;  */ {0x00,0x00,0x18,0x00,0x00,0x18,0x18,0x30},
+    /*60 <  */ {0x0E,0x18,0x30,0x60,0x30,0x18,0x0E,0x00},
+    /*61 =  */ {0x00,0x00,0x7E,0x00,0x7E,0x00,0x00,0x00},
+    /*62 >  */ {0x70,0x18,0x0C,0x06,0x0C,0x18,0x70,0x00},
+    /*63 ?  */ {0x3C,0x66,0x06,0x0C,0x18,0x00,0x18,0x00},
+};
+
+/* Copy the built-in font into the video state's character ROM region. */
+static void load_default_charrom(GfxVideoState *s)
+{
+    memcpy(s->chars, default_font, sizeof(default_font));
+}
+
+/* ── ASCII → C64 screen code (uppercase only) ────────────────────── */
+
+static uint8_t ascii_to_screencode(char c)
+{
+    if (c >= 'A' && c <= 'Z') return (uint8_t)(c - 'A' + 1);
+    if (c >= 'a' && c <= 'z') return (uint8_t)(c - 'a' + 1);
+    if (c == '@') return 0;
+    if (c >= ' ' && c <= '?') return (uint8_t)c;
+    return 32;  /* fallback: space */
+}
+
+/* Write a NUL-terminated string into screen RAM at (col, row). */
+static void write_text(GfxVideoState *s, int col, int row,
+                       const char *text, uint8_t color_idx)
+{
+    int i;
+    for (i = 0; text[i] != '\0'; i++) {
+        int pos = row * SCREEN_COLS + col + i;
+        if (pos < 0 || pos >= (int)GFX_TEXT_SIZE) break;
+        s->screen[pos] = ascii_to_screencode(text[i]);
+        s->color[pos]  = color_idx;
+    }
+}
+
+/* Fill an entire row's colour with the given index. */
+static void fill_row_color(GfxVideoState *s, int row, uint8_t color_idx)
+{
+    int c;
+    for (c = 0; c < SCREEN_COLS; c++) {
+        s->color[row * SCREEN_COLS + c] = color_idx;
+    }
+}
+
+/* ── Test pattern ─────────────────────────────────────────────────── */
+
+static void setup_demo(GfxVideoState *s)
+{
+    int row;
+
+    /* Default: all cells = space (32), light blue text on blue bg. */
+    memset(s->screen, 32, GFX_TEXT_SIZE);
+    memset(s->color, 14, GFX_COLOR_SIZE);    /* 14 = light blue */
+
+    /* Title bar */
+    write_text(s, 4, 1, "**** CBM-BASIC GFX V1 ****", 1);
+
+    /* Subtitle */
+    write_text(s, 4, 3, "RAYLIB PHASE 1 - VIDEO MEMORY", 14);
+    write_text(s, 4, 4, "40X25 TEXT SCREEN + 8X8 FONT", 14);
+
+    /* Character ROM showcase */
+    write_text(s, 1, 6, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", 1);
+    write_text(s, 1, 7, "0123456789 !@#$%&()+=-.,;:", 15);
+
+    /* Palette display: 16 colour bars */
+    write_text(s, 1, 9, "COLOUR PALETTE:", 1);
+    for (row = 0; row < 16; row++) {
+        int r = 11 + row / 8;
+        int col_start = (row % 8) * 5;
+        int c;
+        for (c = 0; c < 4; c++) {
+            int pos = r * SCREEN_COLS + col_start + c;
+            s->screen[pos] = 0xA0 & 0x3F;  /* solid block (screen code 32 = space with reverse would be ideal, but we use a filled approach) */
+            s->color[pos]  = (uint8_t)row;
+        }
+    }
+    /* Label the palette rows */
+    write_text(s, 1, 11, "BLK  WHT  RED  CYN  PUR", 15);
+    write_text(s, 1, 12, "GRN  BLU  YEL  ORG  BRN", 15);
+
+    /* Ready prompt */
+    write_text(s, 0, 15, "READY.", 14);
+
+    /* Fill a row with reverse blocks to show a colour stripe */
+    for (row = 17; row <= 22; row++) {
+        int c;
+        uint8_t stripe_color = (uint8_t)((row - 17) + 2);
+        fill_row_color(s, row, stripe_color);
+        for (c = 0; c < SCREEN_COLS; c++) {
+            s->screen[row * SCREEN_COLS + c] = 32; /* space */
+        }
+    }
+    write_text(s, 10, 17, "    RED STRIPE    ", 1);
+    write_text(s, 10, 18, "   CYAN STRIPE    ", 0);
+    write_text(s, 10, 19, "  PURPLE STRIPE   ", 1);
+    write_text(s, 10, 20, "   GREEN STRIPE   ", 0);
+    write_text(s, 10, 21, "   BLUE STRIPE    ", 1);
+    write_text(s, 10, 22, "  YELLOW STRIPE   ", 0);
+    fill_row_color(s, 17, 2);   /* red */
+    fill_row_color(s, 18, 3);   /* cyan */
+    fill_row_color(s, 19, 4);   /* purple */
+    fill_row_color(s, 20, 5);   /* green */
+    fill_row_color(s, 21, 6);   /* blue */
+    fill_row_color(s, 22, 7);   /* yellow */
+    /* Re-write text colors on top of the stripe backgrounds */
+    write_text(s, 10, 17, "    RED STRIPE    ", 1);
+    write_text(s, 10, 18, "   CYAN STRIPE    ", 0);
+    write_text(s, 10, 19, "  PURPLE STRIPE   ", 1);
+    write_text(s, 10, 20, "   GREEN STRIPE   ", 0);
+    write_text(s, 10, 21, "   BLUE STRIPE    ", 1);
+    write_text(s, 10, 22, "  YELLOW STRIPE   ", 0);
+
+    write_text(s, 3, 24, "PRESS ESC OR CLOSE WINDOW TO EXIT", 15);
+}
+
+/* ── Renderer ─────────────────────────────────────────────────────── */
+
+static void render_text_screen(const GfxVideoState *s,
+                               RenderTexture2D target)
+{
+    int row, col, y, x;
+
+    BeginTextureMode(target);
+    ClearBackground(c64_palette[BG_COLOR]);
+
+    for (row = 0; row < SCREEN_ROWS; row++) {
+        for (col = 0; col < SCREEN_COLS; col++) {
+            int idx = row * SCREEN_COLS + col;
+            uint8_t sc = s->screen[idx];
+            uint8_t ci = s->color[idx] & 0x0F;
+            Color fg = c64_palette[ci];
+            const uint8_t *glyph;
+
+            if (sc >= 64) sc &= 0x3F;
+            glyph = &s->chars[sc * 8];
+
+            for (y = 0; y < CELL_H; y++) {
+                uint8_t bits = glyph[y];
+                for (x = 0; x < CELL_W; x++) {
+                    if (bits & (0x80 >> x)) {
+                        DrawPixel(col * CELL_W + x,
+                                  row * CELL_H + y, fg);
+                    }
+                }
+            }
+        }
+    }
+    EndTextureMode();
+}
+
+/* ── Entry point ──────────────────────────────────────────────────── */
+
+int main(void)
+{
+    GfxVideoState vs;
+
+    gfx_video_init(&vs);
+    load_default_charrom(&vs);
+    setup_demo(&vs);
+
+    InitWindow(WIN_W, WIN_H, "CBM-BASIC GFX – Phase 1 Demo");
+    SetTargetFPS(60);
+
+    RenderTexture2D target = LoadRenderTexture(NATIVE_W, NATIVE_H);
+
+    while (!WindowShouldClose()) {
+        render_text_screen(&vs, target);
+
+        BeginDrawing();
+        DrawTexturePro(
+            target.texture,
+            (Rectangle){ 0, 0, (float)NATIVE_W, -(float)NATIVE_H },
+            (Rectangle){ 0, 0, (float)WIN_W, (float)WIN_H },
+            (Vector2){ 0, 0 }, 0.0f, WHITE);
+        EndDrawing();
+    }
+
+    UnloadRenderTexture(target);
+    CloseWindow();
+    return 0;
+}

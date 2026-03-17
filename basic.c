@@ -84,11 +84,6 @@ static int is_ident_char(int c)
     return isalpha((unsigned char)c) || isdigit((unsigned char)c) || c == '$';
 }
 
-static int is_name_char(int c)
-{
-    return isalpha((unsigned char)c) || c == '$';
-}
-
 static const TokenMap token_map[] = {
     {"WHITE", 5},
     {"RED", 28},
@@ -1614,11 +1609,6 @@ static void do_sleep_ticks(double ticks)
 {
     long usec;
     unsigned int sec;
-    long start;
-    long target_ticks;
-    int tps;
-    struct tms tm;
-    double remaining_ticks;
     if (ticks <= 0.0) {
         return;
     }
@@ -2535,7 +2525,6 @@ static struct value *get_var_reference(char **p, int *is_array_out, int *is_stri
     struct value *valp;
     int is_array;
     int dims;
-    int dim_sizes[MAX_DIMS];
     int indices[MAX_DIMS];
     int flat_index = 0;
     int stride = 1;
@@ -2555,7 +2544,6 @@ static struct value *get_var_reference(char **p, int *is_array_out, int *is_stri
     is_array = 0;
     dims = 0;
     if (**p == '(') {
-        int d;
         is_array = 1;
         (*p)++;
         for (;;) {

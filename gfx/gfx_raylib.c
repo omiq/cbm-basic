@@ -130,7 +130,8 @@ static uint8_t ascii_to_screencode(char c)
     return 32;  /* fallback: space */
 }
 
-/* Write a NUL-terminated string into screen RAM at (col, row). */
+/* Write a NUL-terminated string into screen RAM at (col, row).
+ * If reversed != 0, screen codes are OR'd with 0x80 (reverse video). */
 static void write_text(GfxVideoState *s, int col, int row,
                        const char *text, uint8_t color_idx)
 {
@@ -143,12 +144,15 @@ static void write_text(GfxVideoState *s, int col, int row,
     }
 }
 
-/* Fill an entire row's colour with the given index. */
-static void fill_row_color(GfxVideoState *s, int row, uint8_t color_idx)
+static void write_text_reversed(GfxVideoState *s, int col, int row,
+                                const char *text, uint8_t color_idx)
 {
-    int c;
-    for (c = 0; c < SCREEN_COLS; c++) {
-        s->color[row * SCREEN_COLS + c] = color_idx;
+    int i;
+    for (i = 0; text[i] != '\0'; i++) {
+        int pos = row * SCREEN_COLS + col + i;
+        if (pos < 0 || pos >= (int)GFX_TEXT_SIZE) break;
+        s->screen[pos] = ascii_to_screencode(text[i]) | 0x80;
+        s->color[pos]  = color_idx;
     }
 }
 
@@ -173,7 +177,7 @@ static void setup_demo(GfxVideoState *s)
     write_text(s, 1, 6, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", 1);
     write_text(s, 1, 7, "0123456789 !@#$%&()+=-.,;:", 15);
 
-    /* Palette display: 16 colour bars */
+    /* Palette display: 16 colour swatches (reversed spaces = solid blocks) */
     write_text(s, 1, 9, "COLOUR PALETTE:", 1);
     for (row = 0; row < 16; row++) {
         int r = 11 + row / 8;
@@ -181,45 +185,42 @@ static void setup_demo(GfxVideoState *s)
         int c;
         for (c = 0; c < 4; c++) {
             int pos = r * SCREEN_COLS + col_start + c;
-            s->screen[pos] = 0xA0 & 0x3F;  /* solid block (screen code 32 = space with reverse would be ideal, but we use a filled approach) */
+            s->screen[pos] = 32 | 0x80;   /* reversed space = solid block */
             s->color[pos]  = (uint8_t)row;
         }
     }
     /* Label the palette rows */
-    write_text(s, 1, 11, "BLK  WHT  RED  CYN  PUR", 15);
-    write_text(s, 1, 12, "GRN  BLU  YEL  ORG  BRN", 15);
+    write_text(s, 1, 13, "BLK  WHT  RED  CYN  PUR", 15);
+    write_text(s, 1, 14, "GRN  BLU  YEL  ORG  BRN", 15);
 
     /* Ready prompt */
-    write_text(s, 0, 15, "READY.", 14);
+    write_text(s, 0, 16, "READY.", 14);
 
-    /* Fill a row with reverse blocks to show a colour stripe */
-    for (row = 17; row <= 22; row++) {
-        int c;
-        uint8_t stripe_color = (uint8_t)((row - 17) + 2);
-        fill_row_color(s, row, stripe_color);
-        for (c = 0; c < SCREEN_COLS; c++) {
-            s->screen[row * SCREEN_COLS + c] = 32; /* space */
+    /* Colour stripes: fill each row with reversed spaces (solid blocks),
+     * then write reversed text so letters appear as blue-on-colour.
+     * This is the authentic C64 technique for coloured backgrounds. */
+    {
+        static const struct { uint8_t ci; const char *label; } stripes[] = {
+            { 2,  "    RED STRIPE    " },
+            { 3,  "   CYAN STRIPE    " },
+            { 4,  "  PURPLE STRIPE   " },
+            { 5,  "   GREEN STRIPE   " },
+            { 6,  "   BLUE STRIPE    " },
+            { 7,  "  YELLOW STRIPE   " },
+        };
+        int si;
+        for (si = 0; si < 6; si++) {
+            int r = 18 + si;
+            int c;
+            for (c = 0; c < SCREEN_COLS; c++) {
+                int pos = r * SCREEN_COLS + c;
+                s->screen[pos] = 32 | 0x80;   /* reversed space */
+                s->color[pos]  = stripes[si].ci;
+            }
+            write_text_reversed(s, 11, r, stripes[si].label,
+                                stripes[si].ci);
         }
     }
-    write_text(s, 10, 17, "    RED STRIPE    ", 1);
-    write_text(s, 10, 18, "   CYAN STRIPE    ", 0);
-    write_text(s, 10, 19, "  PURPLE STRIPE   ", 1);
-    write_text(s, 10, 20, "   GREEN STRIPE   ", 0);
-    write_text(s, 10, 21, "   BLUE STRIPE    ", 1);
-    write_text(s, 10, 22, "  YELLOW STRIPE   ", 0);
-    fill_row_color(s, 17, 2);   /* red */
-    fill_row_color(s, 18, 3);   /* cyan */
-    fill_row_color(s, 19, 4);   /* purple */
-    fill_row_color(s, 20, 5);   /* green */
-    fill_row_color(s, 21, 6);   /* blue */
-    fill_row_color(s, 22, 7);   /* yellow */
-    /* Re-write text colors on top of the stripe backgrounds */
-    write_text(s, 10, 17, "    RED STRIPE    ", 1);
-    write_text(s, 10, 18, "   CYAN STRIPE    ", 0);
-    write_text(s, 10, 19, "  PURPLE STRIPE   ", 1);
-    write_text(s, 10, 20, "   GREEN STRIPE   ", 0);
-    write_text(s, 10, 21, "   BLUE STRIPE    ", 1);
-    write_text(s, 10, 22, "  YELLOW STRIPE   ", 0);
 
     write_text(s, 3, 24, "PRESS ESC OR CLOSE WINDOW TO EXIT", 15);
 }
@@ -239,18 +240,27 @@ static void render_text_screen(const GfxVideoState *s,
             int idx = row * SCREEN_COLS + col;
             uint8_t sc = s->screen[idx];
             uint8_t ci = s->color[idx] & 0x0F;
-            Color fg = c64_palette[ci];
+            int reversed = (sc >= 128);
+            uint8_t char_idx;
             const uint8_t *glyph;
+            Color fg = c64_palette[ci];
+            Color bg = c64_palette[BG_COLOR];
 
-            if (sc >= 64) sc &= 0x3F;
-            glyph = &s->chars[sc * 8];
+            char_idx = sc & 0x7F;
+            if (char_idx >= 64) char_idx &= 0x3F;
+            glyph = &s->chars[char_idx * 8];
 
             for (y = 0; y < CELL_H; y++) {
                 uint8_t bits = glyph[y];
                 for (x = 0; x < CELL_W; x++) {
-                    if (bits & (0x80 >> x)) {
-                        DrawPixel(col * CELL_W + x,
-                                  row * CELL_H + y, fg);
+                    int px = col * CELL_W + x;
+                    int py = row * CELL_H + y;
+                    if (reversed) {
+                        DrawPixel(px, py,
+                                  (bits & (0x80 >> x)) ? bg : fg);
+                    } else {
+                        if (bits & (0x80 >> x))
+                            DrawPixel(px, py, fg);
                     }
                 }
             }
